@@ -49,7 +49,6 @@ pub fn column(f: &CardFacts) -> Column {
 /// Closed states rest in Done; anything needing a human lands in
 /// NeedsYou; the rest await review. Human approval still gates the
 /// merge itself via the Sentinel review gate, not this column.
-#[allow(dead_code)] // board API exposure consumes this in Phase 5.
 pub fn column_for_pr(card: &super::forge_facts::PrCard) -> Column {
     if card.state != "open" {
         return Column::Done;
@@ -119,6 +118,7 @@ mod tests {
         unresolved: i64,
     ) -> crate::forge_facts::PrCard {
         crate::forge_facts::PrCard {
+            repo: "o/r".into(),
             number,
             title: "t".into(),
             state: state.into(),

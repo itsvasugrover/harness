@@ -90,6 +90,7 @@ pub async fn run_unit(
     };
     let loop_cfg = loop_turn::LoopConfig::default();
     let mut steps = 0u32;
+    let mut guard = loop_turn::DoomGuard::default();
     let mut delegated = false;
     store
         .create_session(&cfg.session, &cfg.agent, &cfg.model)
@@ -111,7 +112,24 @@ pub async fn run_unit(
         let Some((tool, input)) = driver.next_turn(steps) else {
             break;
         };
-        let out = loop_turn::run_turn(&tools, &ctx, &tool, &input, steps, &loop_cfg)?;
+        let out = loop_turn::run_turn_guarded(loop_turn::GuardedTurn {
+            registry: &tools,
+            ctx: &ctx,
+            tool: &tool,
+            input: &input,
+            steps_used: steps,
+            cfg: &loop_cfg,
+            guard: &mut guard,
+            preapproved: &[
+                "read".into(),
+                "glob".into(),
+                "grep".into(),
+                "recall".into(),
+                "skill".into(),
+                "task".into(),
+                "todo".into(),
+            ],
+        })?;
         steps += 1;
         driver.observe(&out.title, &out.output);
         store
