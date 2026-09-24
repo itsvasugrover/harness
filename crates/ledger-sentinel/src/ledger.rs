@@ -2,9 +2,8 @@
 //! index for filtered reads. Files are truth (`audit/*.jsonl`, one per
 //! day); the index is rebuildable cache. Every record carries full
 //! attribution so a bad merge traces to the exact actor and advisor.
-use super::port::{Attribution, AuditEvent};
+use super::port::{chain_hash, Attribution, AuditEvent};
 use anyhow::Result;
-use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 
 const SCHEMA: &str = "
@@ -13,6 +12,9 @@ CREATE TABLE IF NOT EXISTS audit_index(
   actor TEXT NOT NULL DEFAULT '', repo TEXT NOT NULL DEFAULT '',
   kind TEXT NOT NULL DEFAULT '', verdict TEXT NOT NULL DEFAULT '',
   hash TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '', agent TEXT NOT NULL DEFAULT '',
+  skill TEXT NOT NULL DEFAULT '', mcp_server TEXT NOT NULL DEFAULT '',
+  refs TEXT NOT NULL DEFAULT '[]',
   PRIMARY KEY(seq)
 );
 CREATE INDEX IF NOT EXISTS idx_audit_filter ON audit_index(repo, kind, time);";
@@ -28,23 +30,23 @@ pub struct AuditFilter {
     pub limit: u64,
 }
 
-/// Chain link: hex sha256 over the canonical fields plus `hash_prev`.
-pub fn chain_hash(event: &AuditEvent) -> String {
-    let canon = format!(
-        "{}|{}|{}|{}|{}|{}|{}|{}",
-        event.seq,
-        event.time.to_rfc3339(),
-        event.attribution.actor,
-        event.attribution.agent,
-        event.repo,
-        event.kind,
-        event.summary,
-        event.hash_prev
-    );
-    Sha256::digest(canon.as_bytes())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+/// `ALTER TABLE ... ADD COLUMN` for DBs created before a column
+/// existed. Only the fixed known columns are ever added, so the
+/// statements stay static; duplicate-column errors mean "already there".
+async fn ensure_column(pool: &SqlitePool, col: &str) -> Result<()> {
+    let ddl: &'static str = match col {
+        "summary" => "ALTER TABLE audit_index ADD COLUMN summary TEXT NOT NULL DEFAULT ''",
+        "agent" => "ALTER TABLE audit_index ADD COLUMN agent TEXT NOT NULL DEFAULT ''",
+        "skill" => "ALTER TABLE audit_index ADD COLUMN skill TEXT NOT NULL DEFAULT ''",
+        "mcp_server" => "ALTER TABLE audit_index ADD COLUMN mcp_server TEXT NOT NULL DEFAULT ''",
+        "refs" => "ALTER TABLE audit_index ADD COLUMN refs TEXT NOT NULL DEFAULT '[]'",
+        _ => return Ok(()),
+    };
+    match sqlx::query(ddl).execute(pool).await {
+        Ok(_) => Ok(()),
+        Err(e) if e.to_string().contains("duplicate column name") => Ok(()),
+        Err(e) => Err(e.into()),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +59,10 @@ impl Ledger {
     async fn init(dir: std::path::PathBuf, pool: SqlitePool) -> Result<Self> {
         std::fs::create_dir_all(&dir)?;
         sqlx::query(SCHEMA).execute(&pool).await?;
+        // Existing DBs predate the detail columns: add what's missing.
+        for col in ["summary", "agent", "skill", "mcp_server", "refs"] {
+            ensure_column(&pool, col).await?;
+        }
         Ok(Self { dir, pool })
     }
 
@@ -82,7 +88,7 @@ impl Ledger {
     }
 
     /// Append one event: chain-link it, write JSONL, index the row.
-    /// Returns the stored event (with seq and hash filled).
+    /// Returns the stored event (with seq filled).
     pub async fn append(
         &self,
         attribution: Attribution,
@@ -90,6 +96,7 @@ impl Ledger {
         kind: &str,
         summary: &str,
         verdict: &str,
+        refs: &[String],
     ) -> Result<AuditEvent> {
         let (seq,): (i64,) = sqlx::query_as("SELECT COALESCE(MAX(seq), -1) + 1 FROM audit_index")
             .fetch_one(&self.pool)
@@ -107,9 +114,9 @@ impl Ledger {
             prev.map(|(h,)| h).as_deref().unwrap_or("genesis"),
         );
         event.verdict = verdict.into();
+        event.refs = refs.to_vec();
         let hash = chain_hash(&event);
-        let mut stored = event.clone();
-        stored.hash_prev = event.hash_prev.clone();
+        let stored = event;
         let line = serde_json::to_string(&stored)?;
         {
             use std::io::Write;
@@ -120,8 +127,9 @@ impl Ledger {
             writeln!(file, "{line}")?;
         }
         sqlx::query(
-            "INSERT INTO audit_index(seq, id, time, actor, repo, kind, verdict, hash)
-             VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO audit_index(seq, id, time, actor, repo, kind, verdict, hash,
+              summary, agent, skill, mcp_server, refs)
+             VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(seq)
         .bind(stored.id.to_string())
@@ -131,6 +139,11 @@ impl Ledger {
         .bind(&stored.kind)
         .bind(&stored.verdict)
         .bind(&hash)
+        .bind(&stored.summary)
+        .bind(&stored.attribution.agent)
+        .bind(stored.attribution.skill.clone().unwrap_or_default())
+        .bind(stored.attribution.mcp_server.clone().unwrap_or_default())
+        .bind(serde_json::to_string(&stored.refs)?)
         .execute(&self.pool)
         .await?;
         Ok(stored)
@@ -141,7 +154,8 @@ impl Ledger {
     /// `QueryBuilder` so the dynamic filter list stays injection-safe.
     pub async fn query(&self, filter: &AuditFilter) -> Result<Vec<AuditEvent>> {
         let mut qb = sqlx::QueryBuilder::new(
-            "SELECT seq, id, time, actor, repo, kind, verdict FROM audit_index WHERE 1 = 1",
+            "SELECT seq, id, time, actor, repo, kind, verdict,
+              summary, agent, skill, mcp_server, refs FROM audit_index WHERE 1 = 1",
         );
         if let Some(v) = &filter.actor {
             qb.push(" AND actor = ");
@@ -166,29 +180,54 @@ impl Ledger {
         qb.push(" ORDER BY seq LIMIT ");
         qb.push_bind(filter.limit.clamp(1, 500) as i64);
         let rows = qb
-            .build_query_as::<(i64, String, String, String, String, String, String)>()
+            .build_query_as::<(
+                i64,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+            )>()
             .fetch_all(&self.pool)
             .await?;
         Ok(rows
             .into_iter()
-            .map(|(seq, id, time, actor, repo, kind, verdict)| AuditEvent {
-                seq: seq as u64,
-                id: id.parse().unwrap_or_else(|_| uuid::Uuid::new_v4()),
-                time: time.parse().unwrap_or_else(|_| chrono::Utc::now()),
-                attribution: Attribution {
-                    actor,
-                    agent: String::new(),
-                    skill: None,
-                    mcp_server: None,
+            .map(
+                |(seq, id, time, actor, repo, kind, verdict, summary, agent, skill, mcp, refs)| {
+                    AuditEvent {
+                        seq: seq as u64,
+                        id: id.parse().unwrap_or_else(|_| uuid::Uuid::new_v4()),
+                        time: time.parse().unwrap_or_else(|_| chrono::Utc::now()),
+                        attribution: Attribution {
+                            actor,
+                            agent,
+                            skill: none_if_empty(skill),
+                            mcp_server: none_if_empty(mcp),
+                        },
+                        repo,
+                        kind,
+                        summary,
+                        verdict,
+                        refs: serde_json::from_str(&refs).unwrap_or_default(),
+                        hash_prev: String::new(),
+                    }
                 },
-                repo,
-                kind,
-                summary: String::new(),
-                verdict,
-                refs: vec![],
-                hash_prev: String::new(),
-            })
+            )
             .collect())
+    }
+}
+
+fn none_if_empty(s: String) -> Option<String> {
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
     }
 }
 
@@ -209,11 +248,18 @@ mod tests {
     async fn appends_chain_and_filters() {
         let ledger = Ledger::open_memory().await.unwrap();
         ledger
-            .append(attr("w1"), "o/r", "tool.exec", "ran read", "pass")
+            .append(attr("w1"), "o/r", "tool.exec", "ran read", "pass", &[])
             .await
             .unwrap();
         ledger
-            .append(attr("w2"), "o/r", "gate.decision", "Proceed", "pass")
+            .append(
+                attr("w2"),
+                "o/r",
+                "gate.decision",
+                "Proceed",
+                "pass",
+                &["pr:3".into()],
+            )
             .await
             .unwrap();
         let all = ledger
@@ -225,6 +271,10 @@ mod tests {
             .unwrap();
         assert_eq!(all.len(), 2);
         assert_eq!((all[0].seq, all[1].seq), (0, 1));
+        // Reads hydrate the full event, not just the filter keys.
+        assert_eq!(all[0].summary, "ran read");
+        assert_eq!(all[0].attribution.agent, "build");
+        assert_eq!(all[1].refs, vec!["pr:3"]);
         let one = ledger
             .query(&AuditFilter {
                 kind: Some("gate.decision".into()),
