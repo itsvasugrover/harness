@@ -167,7 +167,7 @@ async fn main() -> Result<()> {
             if !boot_facts.is_empty() {
                 *state.facts.lock().unwrap() = boot_facts;
             } else if let Ok(store) = work_engine::store::Store::open(&format!(
-                "sqlite://{data_dir}/db/harness.db?create_if_missing=true"
+                "sqlite://{data_dir}/db/harness.db?mode=rwc"
             ))
             .await
             {
