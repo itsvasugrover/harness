@@ -1,8 +1,12 @@
 # Command Deck (Tauri Rust desktop supervisor)
 
-Status: design spec for Phase 5. Live today: sidecar + UI stubs and
-the daemon API they will consume (board, identity, gateway). No
-screens, PTY, or updater code yet.
+Status: Phase 5a live. The sidecar is a real lifecycle crate
+(`command-deck-sidecar`: spawn/supervise/stop, single-instance lock,
+log tail; std-only, tested) and the Vite React UI (bun + Tailwind +
+shadcn-style primitives, Lucide only) serves Board (worker + PR cards),
+Audit (filters + verdicts), and Settings (URL/bearer, identity probe)
+over the live daemon API. Still pending: Tauri window/command bindings,
+per-worker PTY terminal, and the updater + signing flow.
 
 Native, small, offline-first. The desktop never runs agent logic; it
 renders daemon facts and sends commands.

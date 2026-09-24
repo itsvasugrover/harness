@@ -73,8 +73,12 @@ Built and green (`build`, `test`, `clippy -D warnings`, `fmt --check`,
   (spawn/supervise/stop + call attribution), `config.rs` (layers +
   models.dev base, zero hardcoded URLs), `doctor.rs`, `resume.rs`.
 - `skills/`: `forge-ops`, `failure-notes`, `review-gate` + eval stub.
-- `apps/`: Tauri sidecar/UI stubs, Flutter `harness_ui` + `field_deck`
-  stubs (SDKs not resolved in this checkout — run `flutter pub get`).
+- `apps/`: `command-deck-sidecar` lifecycle crate (tested) + Vite
+  React UI (bun, Tailwind, board/audit/settings over the live API;
+  `bun run build` + `typecheck` green); Flutter `harness_ui` (theme,
+  primitives, pure-Dart API models + intent queue, `dart analyze`
+  clean) + 5-tab `field_deck` app (Flutter SDK not in this checkout
+  — widget files await `flutter analyze`).
 - `docs/`: 14 files (index in `docs/README.md`), `config.example.yaml`,
   `mcp.example.json`, CI (`ci.yml`, `secret-scan.yml`, `skill-evals.yml`),
   `scripts/size-guard.sh`, `openapi/openapi.yaml` v0.2.0 (unified
@@ -83,11 +87,12 @@ Built and green (`build`, `test`, `clippy -D warnings`, `fmt --check`,
 ## Next work (in order)
 
 1. **Phase 5 (now):** session write scopes (writes stay ungranted
-    past `forge.read` until approval scopes land), Command Deck
-    screens + Field Deck app over the live daemon API (unified board
-    + persistent identity + merge gate with `approved` flag are live;
-    still missing: per-repo tags on PR cards, SSE push, generated
-    TS/Dart clients, all screens).
+    past `forge.read` until approval scopes land), then Phase 5b:
+    daemon intent-replay endpoint (approve/retry/comment with
+    idempotency ids + audit), Tauri window/command bindings + PTY,
+    SSE push, generated TS/Dart clients. Phase 5a decks (sidecar,
+    web UI supervision, phone supervision + queue) are live per the
+    deck docs.
 2. Then roadmap Phase 6 (hardening); bets attach to their staging
    phase. `work-engine` `forge` tool and `DaemonForge` are ready and
    waiting on the lease wiring.

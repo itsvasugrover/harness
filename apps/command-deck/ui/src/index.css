@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Inter", ui-sans-serif, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-abyss: oklch(16% 0.008 260);
+  --color-panel: oklch(20% 0.012 260);
+  --color-raised: oklch(24% 0.014 260);
+  --color-edge: oklch(32% 0.012 260);
+  --color-ink: oklch(93% 0.004 260);
+  --color-dim: oklch(68% 0.01 260);
+  --color-faint: oklch(52% 0.01 260);
+  --color-accent: oklch(72% 0.14 250);
+  --color-accent-ink: oklch(18% 0.02 260);
+  --color-ok: oklch(74% 0.16 160);
+  --color-warn: oklch(78% 0.15 80);
+  --color-bad: oklch(68% 0.2 25);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-abyss);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: oklch(72% 0.14 250 / 0.35);
+}
+
+/* Thin scrollbars for column rails. */
+.rail::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.rail::-webkit-scrollbar-thumb {
+  background: oklch(32% 0.012 260);
+  border-radius: 8px;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    100deg,
+    oklch(24% 0.014 260) 40%,
+    oklch(30% 0.014 260) 50%,
+    oklch(24% 0.014 260) 60%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
