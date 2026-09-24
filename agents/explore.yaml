@@ -1,0 +1,9 @@
+---
+name: explore
+kind: subagent
+model: null
+tools: { mode: allowlist, list: [read, glob, grep, recall] }
+max_steps: 25
+permission: read-only
+prompt_file: ./prompts/explore.md
+---
