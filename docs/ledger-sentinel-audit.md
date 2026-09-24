@@ -56,8 +56,8 @@ so a bad merge traces to the exact skill + server that advised it.
 `.github/workflows/`: `ci` (fmt+lint+test+build per member),
 `api-drift` (OpenAPI spec + generated clients fresh),
 `size-guard` (code files ≤300 lines, see modularity doc),
-`secret-scan`, `issue-triage` (label + dupe check), `pr-requirements`
-(title/body/checklist/branch naming). Self-host mirror for Gitea
+`secret-scan`, `issue-triage` (label + dupe check, live),
+`pr-requirements` (title/body/checklist/branch naming, live). Self-host mirror for Gitea
 Actions with the same job names.
 
 ## Human loop

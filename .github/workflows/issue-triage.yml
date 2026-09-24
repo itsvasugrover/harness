@@ -1,0 +1,27 @@
+name: issue-triage
+on:
+  issues: { types: [opened, edited] }
+permissions:
+  issues: write
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Label and dupe-check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.issue.number }}
+          TITLE: ${{ github.event.issue.title }}
+        run: |
+          set -euo pipefail
+          labels=$(gh issue view "$NUMBER" --json labels --jq '.labels | length')
+          if [ "$labels" -eq 0 ]; then
+            gh issue edit "$NUMBER" --add-label triage
+          fi
+          dupes=$(gh issue list --search "$TITLE" --json number,title \
+            --jq "[.[] | select(.number != $NUMBER)] | .[:3]")
+          count=$(echo "$dupes" | jq 'length')
+          if [ "$count" -gt 0 ]; then
+            gh issue comment "$NUMBER" --body "Possible duplicates: $(echo "$dupes" | jq -r 'map("#\(.number) \(.title)") | join(", ")')"
+          fi
