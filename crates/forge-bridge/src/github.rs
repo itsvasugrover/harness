@@ -4,8 +4,8 @@
 use super::http;
 use super::parse;
 use super::port::{
-    Check, Comment, Forge, Issue, IssueFull, MergeReport, NewIssue, NewPull, Page, PullFull, Repo,
-    Review, ReviewThread, Search,
+    Check, Comment, Forge, Issue, IssueFull, MergeReport, NewIssue, NewPull, Page, PullFull,
+    PullSummary, Repo, Review, ReviewThread, Search,
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -143,6 +143,22 @@ impl Forge for GitHub {
             )
             .await?;
         Ok(parse::parse_comment(&http::ok_json(resp, "github").await?))
+    }
+
+    async fn pulls(&self, repo: &str, q: &Search) -> Result<Page<PullSummary>> {
+        let per = q.per_page.clamp(1, 100);
+        let page: u64 = q.cursor.as_deref().unwrap_or("1").parse().unwrap_or(1);
+        let path = format!("/repos/{repo}/pulls?state=open&per_page={per}&page={page}");
+        let resp = self.send(self.http_client.get(self.url(&path))).await?;
+        let next = Self::link_of(&resp).or(Some((page + 1).to_string()));
+        let doc = http::ok_json(resp, "github").await?;
+        let items = doc
+            .as_array()
+            .context("pulls array")?
+            .iter()
+            .map(parse::parse_summary)
+            .collect();
+        Ok(Page { items, next })
     }
 
     async fn pull(&self, repo: &str, number: u64) -> Result<PullFull> {

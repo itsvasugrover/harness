@@ -39,6 +39,37 @@ pub struct HarnessConfig {
     pub catalog_url: String,
     #[serde(default)]
     pub providers: HashMap<String, ProviderCfg>,
+    /// Watched forges for the PR/CI observer. Empty = observer idle.
+    #[serde(default)]
+    pub forges: Vec<ForgeCfg>,
+}
+
+/// One watched forge. Tokens never live here: `env` names the vars the
+/// daemon resolves at use time (env, then OS keychain). Self-host base
+/// URLs (Gitea) come from config; nothing is hardcoded.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ForgeCfg {
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub base_url: String,
+    #[serde(default)]
+    pub env: Vec<String>,
+    #[serde(default)]
+    pub repos: Vec<String>,
+    #[serde(default)]
+    pub poll_secs: u64,
+}
+
+impl ForgeCfg {
+    /// Poll cadence, defaulting to the documented 30s when unset.
+    pub fn interval(&self) -> u64 {
+        if self.poll_secs == 0 {
+            30
+        } else {
+            self.poll_secs
+        }
+    }
 }
 
 /// Load one layer file; missing file = empty layer (not an error).
@@ -66,6 +97,7 @@ pub fn merge(mut base: HarnessConfig, over: HarnessConfig) -> HarnessConfig {
         entry.env.extend(prov.env);
         entry.models.extend(prov.models);
     }
+    base.forges.extend(over.forges);
     base
 }
 
@@ -127,5 +159,24 @@ mod tests {
         assert_eq!(merged.default_model, "acme/m1");
         let catalog = to_catalog(&merged);
         assert!(catalog.providers.contains_key("acme"));
+    }
+
+    #[test]
+    fn forges_extend_and_default_poll() {
+        let dir = std::env::temp_dir().join("harness-forge-config-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let g = dir.join("global.yaml");
+        std::fs::write(
+            &g,
+            "forges:\n  - kind: github\n    env: [GH_TOKEN]\n    repos: [o/r]\n",
+        )
+        .unwrap();
+        let merged = merge(
+            HarnessConfig::default(),
+            load_layer(g.to_str().unwrap()).unwrap(),
+        );
+        assert_eq!(merged.forges.len(), 1);
+        assert_eq!(merged.forges[0].interval(), 30);
     }
 }

@@ -150,6 +150,20 @@ pub struct Review {
     pub state: String,
 }
 
+/// Lightweight PR row for observer listing. Detail (checks,
+/// threads) comes from [`Forge::pull`] only on demand.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PullSummary {
+    #[serde(default)]
+    pub number: u64,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub head_sha: String,
+}
+
 /// Unified forge surface. Agent + decks program to this, never SDKs.
 /// Token handling stays daemon-side: adapters receive a resolved token
 /// per call site, workers only ever present a [`CapabilityLease`].
@@ -161,6 +175,7 @@ pub trait Forge: Send + Sync {
     async fn issue_detail(&self, repo: &str, number: u64) -> Result<IssueFull>;
     async fn open_issue(&self, repo: &str, issue: &NewIssue) -> Result<Issue>;
     async fn comment(&self, repo: &str, number: u64, body: &str) -> Result<Comment>;
+    async fn pulls(&self, repo: &str, q: &Search) -> Result<Page<PullSummary>>;
     async fn pull(&self, repo: &str, number: u64) -> Result<PullFull>;
     async fn open_pull(&self, repo: &str, pull: &NewPull) -> Result<PullFull>;
     async fn merge(&self, repo: &str, number: u64, method: &str) -> Result<MergeReport>;

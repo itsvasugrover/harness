@@ -4,8 +4,8 @@
 use super::http;
 use super::parse;
 use super::port::{
-    Check, Comment, Forge, Issue, IssueFull, MergeReport, NewIssue, NewPull, Page, PullFull, Repo,
-    Review, ReviewThread, Search,
+    Check, Comment, Forge, Issue, IssueFull, MergeReport, NewIssue, NewPull, Page, PullFull,
+    PullSummary, Repo, Review, ReviewThread, Search,
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -73,7 +73,7 @@ impl Gitea {
             .collect())
     }
 
-    /// No thread object: each pull review is one thread, resolved on approve.
+    /// No thread object: each review is one thread (see `parse::parse_gitea_review`).
     async fn review_threads(&self, repo: &str, number: u64) -> Result<Vec<ReviewThread>> {
         let doc = self
             .get_json(&format!("/repos/{repo}/pulls/{number}/reviews"))
@@ -82,22 +82,7 @@ impl Gitea {
             .as_array()
             .context("reviews array")?
             .iter()
-            .map(|r| {
-                let state = r.get("state").and_then(|v| v.as_str()).unwrap_or("");
-                ReviewThread {
-                    id: r.get("id").map(|x| x.to_string()).unwrap_or_default(),
-                    resolved: state == "APPROVED",
-                    comments: vec![Comment {
-                        id: r.get("id").map(|x| x.to_string()).unwrap_or_default(),
-                        author: r
-                            .pointer("/user/login")
-                            .and_then(|x| x.as_str())
-                            .unwrap_or("")
-                            .into(),
-                        body: r.get("body").and_then(|v| v.as_str()).unwrap_or("").into(),
-                    }],
-                }
-            })
+            .map(parse::parse_gitea_review)
             .collect())
     }
 
@@ -199,6 +184,22 @@ impl Forge for Gitea {
             )
             .await?;
         Ok(parse::parse_comment(&http::ok_json(resp, "gitea").await?))
+    }
+
+    async fn pulls(&self, repo: &str, q: &Search) -> Result<Page<PullSummary>> {
+        let per = q.per_page.clamp(1, 50);
+        let page: u64 = q.cursor.as_deref().unwrap_or("1").parse().unwrap_or(1);
+        let path = format!("/repos/{repo}/pulls?state=open&limit={per}&page={page}");
+        let resp = self.send(self.http_client.get(self.url(&path))).await?;
+        let next = Self::link_of(&resp).or(Some((page + 1).to_string()));
+        let doc = http::ok_json(resp, "gitea").await?;
+        let items = doc
+            .as_array()
+            .context("pulls array")?
+            .iter()
+            .map(parse::parse_summary)
+            .collect();
+        Ok(Page { items, next })
     }
 
     async fn pull(&self, repo: &str, number: u64) -> Result<PullFull> {

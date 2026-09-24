@@ -48,3 +48,19 @@ sentinel:
   require_checks: true
   require_human_approve: true
   block_direct_main_push: true
+
+# Watched forges for the PR/CI observer (polls open PRs, checks,
+# review threads into SQLite facts the Kanban derives from).
+# Tokens never live here: env names vars resolved at use time
+# (env, then OS keychain). Empty or absent = observer idle.
+forges:
+  - kind: github
+    base_url: https://api.github.com
+    env: [GH_TOKEN]
+    repos: [your-org/your-repo]
+    poll_secs: 30
+  # - kind: gitea
+  #   base_url: https://git.example.com
+  #   env: [GITEA_TOKEN]
+  #   repos: [your-org/your-repo]
+  #   poll_secs: 30
