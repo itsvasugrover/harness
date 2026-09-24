@@ -91,9 +91,10 @@ Built and green (`build`, `test`, `clippy -D warnings`, `fmt --check`,
     Phase 5: retry run-loop binding, Tauri window/command bindings +
     PTY, phone stream wiring, generated TS/Dart clients. Live: Phase
     5a decks, 5b intent replay (`POST /api/v1/intents`:
-    approve/comment idempotent + audited, retry explicit 422), 5c SSE
+    approve/comment idempotent + audited, retry explicit 422),     5c SSE
     (`GET /api/v1/events` with cursor replay; web UI streams live
-    with polling fallback).
+    with polling fallback), 5d retry recheck (fresh facts + gate
+    verdict + audit) and the wired phone stream.
 2. Then roadmap Phase 6 (hardening); bets attach to their staging
    phase. `work-engine` `forge` tool and `DaemonForge` are ready and
    waiting on the lease wiring.

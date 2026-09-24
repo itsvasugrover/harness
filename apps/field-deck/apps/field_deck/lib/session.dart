@@ -39,6 +39,18 @@ Future<void> saveConnection(String host, String bearer) async {
   }
 }
 
+const _cursorKey = 'hx_cursor';
+
+Future<int> loadCursor() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getInt(_cursorKey) ?? 0;
+}
+
+Future<void> saveCursor(int cursor) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setInt(_cursorKey, cursor);
+}
+
 Future<HxIntentQueue> loadQueue() async {
   final prefs = await SharedPreferences.getInstance();
   final raw = prefs.getString(_queueKey);
