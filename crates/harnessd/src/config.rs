@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModelCfg {
     #[serde(default)]
     pub context: u64,
@@ -21,6 +22,7 @@ pub struct ModelCfg {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderCfg {
     #[serde(default)]
     pub base_url: String,
@@ -31,9 +33,12 @@ pub struct ProviderCfg {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
 pub struct HarnessConfig {
     #[serde(default)]
     pub default_model: String,
+    #[serde(default)]
+    pub small_model: String,
     /// Upstream model listing (models.dev-compatible). Empty = skip.
     #[serde(default)]
     pub catalog_url: String,
@@ -42,35 +47,25 @@ pub struct HarnessConfig {
     /// Watched forges for the PR/CI observer. Empty = observer idle.
     #[serde(default)]
     pub forges: Vec<ForgeCfg>,
+    #[serde(default)]
+    pub agents_dir: String,
+    #[serde(default)]
+    pub skills_dir: String,
+    #[serde(default)]
+    pub commands_dir: String,
+    #[serde(default)]
+    pub mcp_file: String,
+    #[serde(default)]
+    pub context_press: PressCfg,
+    #[serde(default)]
+    pub shell_trim: TrimCfg,
+    #[serde(default)]
+    pub relay: RelayCfg,
+    #[serde(default)]
+    pub sentinel: SentinelCfg,
 }
 
-/// One watched forge. Tokens never live here: `env` names the vars the
-/// daemon resolves at use time (env, then OS keychain). Self-host base
-/// URLs (Gitea) come from config; nothing is hardcoded.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ForgeCfg {
-    #[serde(default)]
-    pub kind: String,
-    #[serde(default)]
-    pub base_url: String,
-    #[serde(default)]
-    pub env: Vec<String>,
-    #[serde(default)]
-    pub repos: Vec<String>,
-    #[serde(default)]
-    pub poll_secs: u64,
-}
-
-impl ForgeCfg {
-    /// Poll cadence, defaulting to the documented 30s when unset.
-    pub fn interval(&self) -> u64 {
-        if self.poll_secs == 0 {
-            30
-        } else {
-            self.poll_secs
-        }
-    }
-}
+pub use super::config_sections::{ForgeCfg, PressCfg, RelayCfg, SentinelCfg, TrimCfg};
 
 /// Load one layer file; missing file = empty layer (not an error).
 pub fn load_layer(path: &str) -> Result<HarnessConfig> {
@@ -81,13 +76,22 @@ pub fn load_layer(path: &str) -> Result<HarnessConfig> {
     }
 }
 
-/// Merge local over global: providers/models merge, scalars win.
+/// Merge local over global: providers/models merge, scalars win when
+/// set, nested tables merge field-wise, forges dedupe by kind+URL
+/// (local entry replaces the global one it shadows).
 pub fn merge(mut base: HarnessConfig, over: HarnessConfig) -> HarnessConfig {
-    if !over.default_model.is_empty() {
-        base.default_model = over.default_model;
-    }
-    if !over.catalog_url.is_empty() {
-        base.catalog_url = over.catalog_url;
+    for (field, value) in [
+        (&mut base.default_model, over.default_model),
+        (&mut base.small_model, over.small_model),
+        (&mut base.catalog_url, over.catalog_url),
+        (&mut base.agents_dir, over.agents_dir),
+        (&mut base.skills_dir, over.skills_dir),
+        (&mut base.commands_dir, over.commands_dir),
+        (&mut base.mcp_file, over.mcp_file),
+    ] {
+        if !value.is_empty() {
+            *field = value;
+        }
     }
     for (name, prov) in over.providers {
         let entry = base.providers.entry(name).or_default();
@@ -97,7 +101,33 @@ pub fn merge(mut base: HarnessConfig, over: HarnessConfig) -> HarnessConfig {
         entry.env.extend(prov.env);
         entry.models.extend(prov.models);
     }
+    base.forges.retain(|f| {
+        !over
+            .forges
+            .iter()
+            .any(|o| o.kind == f.kind && o.base_url == f.base_url)
+    });
     base.forges.extend(over.forges);
+    if over.context_press.enabled.is_some() {
+        base.context_press.enabled = over.context_press.enabled;
+    }
+    if over.context_press.min_block_words != 0 {
+        base.context_press.min_block_words = over.context_press.min_block_words;
+    }
+    if over.shell_trim.enabled.is_some() {
+        base.shell_trim.enabled = over.shell_trim.enabled;
+    }
+    if !over.shell_trim.level.is_empty() {
+        base.shell_trim.level = over.shell_trim.level;
+    }
+    if over.relay.port != 0 {
+        base.relay.port = over.relay.port;
+    }
+    // Plain bools cannot distinguish unset from false: a fully
+    // default local table inherits, anything else wins wholesale.
+    if over.sentinel != SentinelCfg::default() {
+        base.sentinel = over.sentinel;
+    }
     base
 }
 
@@ -162,21 +192,20 @@ mod tests {
     }
 
     #[test]
-    fn forges_extend_and_default_poll() {
-        let dir = std::env::temp_dir().join("harness-forge-config-test");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let g = dir.join("global.yaml");
-        std::fs::write(
-            &g,
-            "forges:\n  - kind: github\n    env: [GH_TOKEN]\n    repos: [o/r]\n",
-        )
-        .unwrap();
-        let merged = merge(
-            HarnessConfig::default(),
-            load_layer(g.to_str().unwrap()).unwrap(),
-        );
-        assert_eq!(merged.forges.len(), 1);
-        assert_eq!(merged.forges[0].interval(), 30);
+    fn example_parses_with_every_key_honored() {
+        let cfg: HarnessConfig =
+            noyalib::from_str(include_str!("../../../config.example.yaml")).unwrap();
+        assert_eq!(cfg.small_model, "deepseek/deepseek-chat");
+        assert_eq!(cfg.relay.port, 8787);
+        assert_eq!(cfg.context_press.enabled, Some(true));
+        assert_eq!(cfg.shell_trim.level, "standard");
+        assert!(cfg.sentinel.require_checks);
+        assert_eq!(cfg.forges.len(), 1);
+        assert_eq!(cfg.skills_dir, "./skills");
+    }
+
+    #[test]
+    fn unknown_keys_fail_loud() {
+        assert!(noyalib::from_str::<HarnessConfig>("bogus_key: 1").is_err());
     }
 }
