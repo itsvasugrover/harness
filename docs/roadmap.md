@@ -78,7 +78,6 @@ appears in ledger, no execution code ships in the app.
 | Shared context cache | `context-press/src/shared.rs` | Phase 2 |
 | Session replay journal | `work-engine/src/replay.rs` | v1 hardening |
 | Skill golden evals | `skills/*/eval.md` + `skill-evals.yml` | v1 hardening |
-| Skill golden evals | `skills/*/eval.md` + `skill-evals.yml` | v1 hardening |
 | Sentinel jury | `ledger-sentinel/src/jury.rs` | v1 hardening |
 | Worktree checkpoint | `harnessd/src/checkpoint.rs` | Phase 3 (isolation exists) |
 | Semantic tool retrieval | `work-engine/src/retrieve.rs` | Phase 2 |

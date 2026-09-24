@@ -10,6 +10,8 @@ Git Flow with short-lived branches. `main` always releasable,
 | `feature/` | `develop` | `develop` | `feature/forge-gitea-observer` |
 | `fix/` | `develop` (or `main` for hotfix via `hotfix/`) | `develop` | `fix/trim-git-log-overflow` |
 | `agent/` | `develop` | `develop` | `agent/worker-42-retry-logic` |
+| `chore/` | `develop` | `develop` | `chore/rotate-ci-cache` |
+| `docs/` | `develop` | `develop` | `docs/phase4-drift-sweep` |
 | `release/` | `develop` | `main` + back-merge `develop` | `release/0.3.0` |
 | `hotfix/` | `main` | `main` + back-merge `develop` | `hotfix/relay-token-leak` |
 

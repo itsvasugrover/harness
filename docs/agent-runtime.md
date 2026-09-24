@@ -13,10 +13,12 @@ approvals ledger-shape, SQLite sessions/messages/usage, event fold,
 overflow levels, compaction select + QA probe, skill frontmatter gate,
 `recall` store.
 Deferred with owner phase: live model streaming + permission prompts +
-doom-loop guard (Phase 3 loop), `task/skill/todo/webfetch/forge`
-tools (Phase 3–4), summarizer that writes compacted notes (Phase 3),
-MCP-owned tool servers (Phase 4). Anything below describing those as
-live is the target shape, not today's code.
+doom-loop guard (Phase 3 loop), `task/skill/todo/webfetch` tools
+(Phase 5), summarizer that writes compacted notes (Phase 3),
+MCP-owned tool servers (Phase 4 loader live, run wiring pending).
+The `forge` tool is live (lease-checked, read-only leases in the run
+loop). Anything below describing the rest as live is the target
+shape, not today's code.
 
 ## Loop (one file per stage, each < 300 lines)
 
@@ -60,7 +62,8 @@ Tool = `{ id, description, schema, execute(ctx) → {title, output, files?} }`.
 | `bash` | Cwd jail + 30s kill-timeout; Trim routing is Phase 4 |
 | `glob`, `grep` | Grouped, truncated; full hits recallable |
 | `recall` | File-backed restore with TTL |
-| `task`, `skill`, `todo`, `webfetch`, `forge` | Phase 4 tools (spec in `skills-agents-mcp.md`) |
+| `task`, `skill`, `todo`, `webfetch` | Phase 5 tools (spec in `skills-agents-mcp.md`) |
+| `forge` | Live: lease-checked reads via `builtins_with_forge` (writes await session scopes) |
 
 Invalid args → machine-readable error fed back to the model, never a crash.
 
