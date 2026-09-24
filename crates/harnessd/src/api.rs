@@ -5,7 +5,7 @@
 use axum::{
     extract::{Query, State},
     http::HeaderMap,
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ struct Identity {
 /// v2 = unified board `{workers, prs}` + persistent host_id.
 pub const CONTRACT: u32 = 2;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct AppState {
     /// Stable machine id, persisted under `<data_dir>/host_id`.
     pub host_id: String,
@@ -30,6 +30,11 @@ pub struct AppState {
     pub prs: Arc<tokio::sync::RwLock<Vec<super::forge_facts::PrCard>>>,
     /// Audit ledger when the daemon opened one; `None` serves `[]`.
     pub audit: Option<Arc<tokio::sync::Mutex<ledger_sentinel::ledger::Ledger>>>,
+    /// Daemon forge clients + repo mapping for intent replay (`None` = 503).
+    pub forge: Option<Arc<super::forge_exec::DaemonForge>>,
+    pub forge_cfgs: Vec<super::config_sections::ForgeCfg>,
+    /// Idempotency store for intent replay (`None` = 503).
+    pub intents: Option<super::intent_store::IntentStore>,
 }
 
 impl AppState {
@@ -187,6 +192,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/identity", get(identity))
         .route("/api/v1/board", get(board))
         .route("/api/v1/audit", get(audit))
+        .route("/api/v1/intents", post(super::intents::route))
         .with_state(state)
 }
 
@@ -238,6 +244,9 @@ mod tests {
                 },
             ])),
             audit: None,
+            forge: None,
+            forge_cfgs: vec![],
+            intents: None,
         };
         // Call the handler directly via router would need HTTP; instead
         // assert the derivation the handler relies on stays live.

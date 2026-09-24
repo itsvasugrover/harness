@@ -35,6 +35,27 @@ paths:
           content:
             application/json:
               schema: { type: array, items: { $ref: '#/components/schemas/AuditEvent' } }
+  /api/v1/intents:
+    post:
+      summary: Replay a phone intent (approve_pr/comment) with idempotency.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IntentRequest' }
+      responses:
+        '200':
+          description: applied (or replayed stored result)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IntentResult' }
+        '409':
+          description: conflict with explicit choices
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IntentResult' }
+        '422': { description: kind not executable yet }
+        '503': { description: replay unconfigured }
   /v1/models:
     get:
       summary: OpenAI-compatible model catalog.
@@ -94,3 +115,20 @@ components:
         summary: { type: string }
         verdict: { type: string }
         hash: { type: string }
+    IntentRequest:
+      type: object
+      required: [idempotency_id, kind, repo, number]
+      properties:
+        idempotency_id: { type: string }
+        kind: { type: string, enum: [approve_pr, comment, retry_worker] }
+        repo: { type: string }
+        number: { type: integer }
+        body: { type: string }
+    IntentResult:
+      type: object
+      required: [idempotency_id, applied, summary]
+      properties:
+        idempotency_id: { type: string }
+        applied: { type: boolean }
+        summary: { type: string }
+        choices: { type: array, items: { type: string } }
