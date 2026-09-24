@@ -6,9 +6,11 @@ GitHub + Gitea adapters (`github.rs`, `gitea.rs` over shared
 tested. The daemon observer (`harnessd/src/observer.rs`) polls watched
 repos on the configured cadence into `pr_facts`/`check_facts`/
 `review_facts` SQLite tables (`forge_facts.rs`) and routes failed
-checks and unresolved threads back as structured follow-ups. Merge
-gate and replay-conflict wiring are next — anything below describing
-them is still the target shape.
+checks and unresolved threads back as structured follow-ups. The
+`forge` agent tool (lease-checked, daemon-executed) and intent replay
+with conflict surfacing (`intents.rs`) are live; per-session lease
+wiring in the run loop and the merge gate's live inputs ride with
+Phase 5. Anything below describing them is still the target shape.
 
 One trait, two adapters. The agent and both decks never touch
 provider SDKs directly.

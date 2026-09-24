@@ -56,3 +56,16 @@ pub fn builtins() -> Registry {
     r.register(Recall);
     r
 }
+
+/// Builtins plus the lease-scoped `forge` tool. The daemon builds the
+/// executor (it owns clients and credentials) and mints one lease per
+/// session; run-path wiring passes both in when forges are configured.
+pub fn builtins_with_forge(
+    lease: forge_bridge::port::CapabilityLease,
+    exec: std::sync::Arc<dyn super::tools::forge::ForgeExec>,
+) -> Registry {
+    use super::tools::forge::ForgeTool;
+    let mut r = builtins();
+    r.register(ForgeTool::new(lease, exec));
+    r
+}
