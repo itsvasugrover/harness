@@ -182,6 +182,9 @@ pub trait Forge: Send + Sync {
     async fn checks(&self, repo: &str, sha: &str) -> Result<Vec<Check>>;
     async fn request_review(&self, repo: &str, number: u64, reviewers: &[String])
         -> Result<Review>;
+    /// Submit an approving review (phone approve path; also feeds the
+    /// merge-gate human-approval fact). Posts the forge approve event.
+    async fn approve(&self, repo: &str, number: u64, body: &str) -> Result<Review>;
 }
 
 /// Scoped handle handed to a worker. No token material inside —

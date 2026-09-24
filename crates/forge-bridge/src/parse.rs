@@ -2,7 +2,7 @@
 //! Gitea agree on the JSON we read (`number/title/state`, `labels[].name`,
 //! `user.login`, `head.sha`), so one parser set serves both; only the
 //! request paths and envelopes differ per forge.
-use super::port::{Check, Comment, Issue, PullFull, PullSummary, Repo, ReviewThread};
+use super::port::{Check, Comment, Issue, PullFull, PullSummary, Repo, Review, ReviewThread};
 
 pub fn str(v: &serde_json::Value, key: &str) -> String {
     v.get(key).and_then(|x| x.as_str()).unwrap_or("").into()
@@ -106,6 +106,29 @@ pub fn parse_gitea_review(v: &serde_json::Value) -> ReviewThread {
                 .into(),
             body: str(v, "body"),
         }],
+    }
+}
+
+/// Approve-review response into the uniform Review shape.
+/// Covers the GitHub (`user.login`) and Gitea (`user.login` or
+/// `reviewer.username`) envelopes; unknown shapes read APPROVED.
+pub fn parse_approval(v: &serde_json::Value, repo: &str, number: u64) -> Review {
+    Review {
+        id: v
+            .get("id")
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| format!("{repo}#{number}")),
+        author: v
+            .pointer("/user/login")
+            .or_else(|| v.pointer("/reviewer/username"))
+            .and_then(|u| u.as_str())
+            .unwrap_or_default()
+            .into(),
+        state: v
+            .get("state")
+            .and_then(|s| s.as_str())
+            .unwrap_or("APPROVED")
+            .into(),
     }
 }
 

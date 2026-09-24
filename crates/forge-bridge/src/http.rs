@@ -44,6 +44,18 @@ pub async fn ok_json(resp: reqwest::Response, forge: &str) -> Result<serde_json:
     Ok(doc)
 }
 
+/// POST an approve-review event and parse the uniform Review shape.
+/// Shared by adapters so the approve contract lives in one place.
+pub async fn approve_review(
+    auth: &str,
+    req: reqwest::RequestBuilder,
+    repo: &str,
+    number: u64,
+) -> Result<super::port::Review> {
+    let doc = ok_json(send(auth, req).await?, "forge").await?;
+    Ok(super::parse::parse_approval(&doc, repo, number))
+}
+
 pub fn split_repo(repo: &str) -> Result<(&str, &str)> {
     repo.split_once('/').context("repo must be owner/name")
 }
