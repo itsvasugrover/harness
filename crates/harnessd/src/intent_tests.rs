@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 struct Fake {
     state: String,
+    red: bool,
     approves: std::sync::Mutex<usize>,
     comments: std::sync::Mutex<usize>,
 }
@@ -41,9 +42,19 @@ impl Forge for Fake {
         Ok(Page::default())
     }
     async fn pull(&self, _r: &str, n: u64) -> anyhow::Result<PullFull> {
+        let checks = if self.red {
+            vec![Check {
+                name: "ci".into(),
+                status: "completed".into(),
+                conclusion: "failure".into(),
+            }]
+        } else {
+            vec![]
+        };
         Ok(PullFull {
             number: n,
             state: self.state.clone(),
+            checks,
             ..Default::default()
         })
     }
@@ -71,6 +82,7 @@ impl Forge for Fake {
 
 async fn deps(
     state: &str,
+    red: bool,
 ) -> (
     IntentStore,
     HashMap<String, Arc<dyn Forge + Send + Sync>>,
@@ -80,6 +92,7 @@ async fn deps(
     let store = IntentStore::open("sqlite::memory:").await.unwrap();
     let fake = Arc::new(Fake {
         state: state.into(),
+        red,
         approves: std::sync::Mutex::new(0),
         comments: std::sync::Mutex::new(0),
     });
@@ -107,7 +120,7 @@ fn req(id: &str, kind: &str) -> IntentRequest {
 
 #[tokio::test]
 async fn approve_applies_and_dedups_replays() {
-    let (store, clients, forges, counts) = deps("open").await;
+    let (store, clients, forges, counts) = deps("open", false).await;
     let first = dispatch(&store, &clients, &forges, None, &req("a1", "approve_pr")).await;
     assert!(first.applied);
     let second = dispatch(&store, &clients, &forges, None, &req("a1", "approve_pr")).await;
@@ -117,7 +130,7 @@ async fn approve_applies_and_dedups_replays() {
 
 #[tokio::test]
 async fn merged_target_conflicts_without_executing() {
-    let (store, clients, forges, counts) = deps("merged").await;
+    let (store, clients, forges, counts) = deps("merged", false).await;
     let out = dispatch(&store, &clients, &forges, None, &req("m1", "approve_pr")).await;
     assert!(!out.applied);
     assert_eq!(out.choices, vec!["drop", "escalate"]);
@@ -125,21 +138,21 @@ async fn merged_target_conflicts_without_executing() {
 }
 
 #[tokio::test]
-async fn comment_applies_and_retry_is_unsupported() {
-    let (store, clients, forges, counts) = deps("open").await;
+async fn comment_applies_and_retry_rechecks() {
+    let (store, clients, forges, counts) = deps("open", false).await;
     let out = dispatch(&store, &clients, &forges, None, &req("c1", "comment")).await;
     assert!(out.applied);
     assert_eq!(*counts.comments.lock().unwrap(), 1);
     let retry = dispatch(&store, &clients, &forges, None, &req("r1", "retry_worker")).await;
-    assert!(!retry.applied);
-    assert!(retry.choices.is_empty());
+    assert!(retry.applied);
+    assert!(retry.summary.contains("recheck"));
     let unknown = dispatch(&store, &clients, &forges, None, &req("u1", "nope")).await;
     assert!(!unknown.applied);
 }
 
 #[tokio::test]
 async fn unwatched_repo_conflicts() {
-    let (store, clients, _forges, counts) = deps("open").await;
+    let (store, clients, _forges, counts) = deps("open", false).await;
     let mut bad = req("w1", "comment");
     bad.repo = Some("other/r".into());
     let out = dispatch(&store, &clients, &[], None, &bad).await;
@@ -155,7 +168,7 @@ async fn conflicts_land_in_the_audit_ledger() {
         .await
         .unwrap();
     let ledger = Arc::new(tokio::sync::Mutex::new(ledger));
-    let (store, clients, forges, _counts) = deps("merged").await;
+    let (store, clients, forges, _counts) = deps("merged", false).await;
     let out = dispatch(
         &store,
         &clients,
@@ -181,4 +194,15 @@ async fn conflicts_land_in_the_audit_ledger() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].verdict, "conflict");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn recheck_reports_gate_verdict_and_dedups() {
+    let (store, clients, forges, _counts) = deps("open", true).await;
+    let first = dispatch(&store, &clients, &forges, None, &req("k1", "retry_worker")).await;
+    assert!(first.applied);
+    assert!(first.summary.contains("failing checks"));
+    let second = dispatch(&store, &clients, &forges, None, &req("k1", "retry_worker")).await;
+    assert!(second.applied);
+    assert!(second.summary.contains("replay:"));
 }

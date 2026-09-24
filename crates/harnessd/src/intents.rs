@@ -51,11 +51,7 @@ pub async fn dispatch(
     if let Ok(Some(prior)) = store.prior(&id).await {
         return applied(&id, format!("replay: {prior}"));
     }
-    // Retry binds to the run loop, which has no per-worker rerun yet.
-    if kind == "retry_worker" {
-        return unsupported(&id, "retry lands with the run-loop binding (Phase 5c)");
-    }
-    if kind != "approve_pr" && kind != "comment" {
+    if kind != "approve_pr" && kind != "comment" && kind != "retry_worker" {
         return unsupported(&id, &format!("unknown kind '{kind}'"));
     }
     let Some(cfg) = forges.iter().find(|f| f.repos.iter().any(|r| r == &repo)) else {
@@ -95,6 +91,13 @@ pub async fn dispatch(
         audit(&audit_log, &repo, &kind, &out.summary, "conflict", &id).await;
         return out;
     }
+    // Retry is a recheck: fresh PR facts plus a merge-gate verdict plus
+    // an audit write. Read-only against the forge, so no lease is needed
+    // and replaying it can never double-apply.
+    if kind == "retry_worker" {
+        return recheck(store, &audit_log, &id, &repo, number, &pull).await;
+    }
+
     // Lease-scoped execution: the daemon mints the exact caps the op
     // needs; the phone never sees credentials, only this result.
     let op = if kind == "approve_pr" {
@@ -126,6 +129,47 @@ pub async fn dispatch(
     }
     let verdict = if out.applied { "applied" } else { "conflict" };
     audit(&audit_log, &repo, &kind, &out.summary, verdict, &id).await;
+    out
+}
+
+/// Recheck one PR: fresh facts, gate verdict, audit write, stored result.
+async fn recheck(
+    store: &super::intent_store::IntentStore,
+    audit_log: &Option<Arc<tokio::sync::Mutex<ledger_sentinel::ledger::Ledger>>>,
+    id: &str,
+    repo: &str,
+    number: u64,
+    pull: &forge_bridge::port::PullFull,
+) -> IntentOutcome {
+    let input = super::forge_gate::merge_input_from_pull(pull, false);
+    let (verdict, reasons) =
+        ledger_sentinel::review_gate::evaluate(&ledger_sentinel::policy::Policy::default(), &input);
+    let verdict_str = match verdict {
+        ledger_sentinel::review_gate::Verdict::Pass => "pass",
+        ledger_sentinel::review_gate::Verdict::Warn => "warn",
+        ledger_sentinel::review_gate::Verdict::Block => "block",
+    };
+    let summary = if reasons.is_empty() {
+        format!("recheck {repo}#{number}: {verdict_str}")
+    } else {
+        format!(
+            "recheck {repo}#{number}: {verdict_str} — {}",
+            reasons.join("; ")
+        )
+    };
+    let out = applied(id, summary);
+    let _ = store
+        .record(id, "retry_worker", repo, number as i64, &out.summary)
+        .await;
+    audit(
+        audit_log,
+        repo,
+        "retry_worker",
+        &out.summary,
+        verdict_str,
+        id,
+    )
+    .await;
     out
 }
 
