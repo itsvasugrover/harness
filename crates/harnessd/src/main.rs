@@ -1,10 +1,12 @@
 //! harnessd: loopback API + scheduler. No agent/tool logic here.
 mod api;
+mod audit_api;
 mod board;
 mod checkpoint;
 mod config;
 mod config_sections;
 mod doctor;
+mod events;
 #[allow(dead_code)] // run-path lease wiring consumes this in Phase 5.
 mod forge_exec;
 mod forge_facts;
@@ -22,6 +24,7 @@ mod model;
 mod observer;
 #[allow(dead_code)] // 3b wires planner + workers into the run loop.
 mod planner;
+mod pr_refresh;
 #[allow(dead_code)] // resume scan runs at serve boot in 3b-iii.
 mod resume;
 #[allow(dead_code)] // run.rs drives the loop; serve wires it in 3b-ii.
@@ -217,49 +220,20 @@ async fn main() -> Result<()> {
                 }
             }
             // Best-effort PR hydration so the unified board has rows on boot.
-            // Observer keeps mirroring after; failures stay empty, never fail boot.
-            if let Ok(facts_db) = forge_facts::ForgeFacts::open(&format!(
-                "sqlite://{data_dir}/db/harness.db?mode=rwc"
-            ))
-            .await
-            {
-                let mut all_prs = vec![];
-                for f in &merged.forges {
-                    for repo in &f.repos {
-                        if let Ok(cards) = facts_db.pr_cards(repo).await {
-                            all_prs.extend(cards);
-                        }
-                    }
-                }
-                *state.prs.write().await = all_prs;
-            }
+            let db_url = format!("sqlite://{data_dir}/db/harness.db?mode=rwc");
+            let _ = pr_refresh::hydrate(&state.prs, &merged.forges, &db_url).await;
             let app = model_switchboard::gateway::router(catalog).merge(api::router(state.clone()));
+            state.hub.publish("hello", "daemon online").await;
             // Forge observer: background tasks mirror PR facts the Kanban
             // derives from. Idle without configured forges, never fails boot.
             observer::spawn_forges(&merged.forges, &data_dir).await;
             // Keep the served PR cards fresh without blocking boot.
-            {
-                let prs = state.prs.clone();
-                let forges = merged.forges.clone();
-                let db_url = format!("sqlite://{data_dir}/db/harness.db?mode=rwc");
-                tokio::spawn(async move {
-                    let Ok(facts_db) = forge_facts::ForgeFacts::open(&db_url).await else {
-                        return;
-                    };
-                    loop {
-                        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-                        let mut all = vec![];
-                        for f in &forges {
-                            for repo in &f.repos {
-                                if let Ok(cards) = facts_db.pr_cards(repo).await {
-                                    all.extend(cards);
-                                }
-                            }
-                        }
-                        *prs.write().await = all;
-                    }
-                });
-            }
+            pr_refresh::spawn(
+                state.prs.clone(),
+                state.hub.clone(),
+                merged.forges.clone(),
+                db_url,
+            );
             let listener = tokio::net::TcpListener::bind(&bind).await?;
             match (lan_bind, lan_bearer) {
                 (Some(lan), Some(bearer)) if !bearer.is_empty() => {

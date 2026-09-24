@@ -3,12 +3,12 @@
 //! the LAN listener enforces the bearer on everything except the exact
 //! `GET /api/v1/identity` probe. Control routes never exist here.
 use axum::{
-    extract::{Query, State},
+    extract::State,
     http::HeaderMap,
     routing::{get, post},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::Arc;
 
 #[derive(Serialize)]
@@ -35,6 +35,8 @@ pub struct AppState {
     pub forge_cfgs: Vec<super::config_sections::ForgeCfg>,
     /// Idempotency store for intent replay (`None` = 503).
     pub intents: Option<super::intent_store::IntentStore>,
+    /// Live event bus (infallible; always present).
+    pub hub: crate::events::Hub,
 }
 
 impl AppState {
@@ -149,50 +151,13 @@ async fn board(State(state): State<AppState>) -> Json<BoardResponse> {
     })
 }
 
-/// `GET /api/v1/audit` filters: actor, repo, kind, time range, limit.
-#[derive(Debug, Deserialize)]
-struct AuditQuery {
-    actor: Option<String>,
-    repo: Option<String>,
-    kind: Option<String>,
-    since: Option<String>,
-    until: Option<String>,
-    limit: Option<u64>,
-}
-
-fn to_filter(q: &AuditQuery) -> ledger_sentinel::ledger::AuditFilter {
-    ledger_sentinel::ledger::AuditFilter {
-        actor: q.actor.clone(),
-        repo: q.repo.clone(),
-        kind: q.kind.clone(),
-        since: q.since.clone(),
-        until: q.until.clone(),
-        limit: q.limit.unwrap_or(100),
-    }
-}
-
-async fn audit(
-    State(state): State<AppState>,
-    Query(q): Query<AuditQuery>,
-) -> Json<Vec<ledger_sentinel::port::AuditEvent>> {
-    let Some(ledger) = &state.audit else {
-        return Json(vec![]);
-    };
-    let rows = ledger
-        .lock()
-        .await
-        .query(&to_filter(&q))
-        .await
-        .unwrap_or_default();
-    Json(rows)
-}
-
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/identity", get(identity))
         .route("/api/v1/board", get(board))
-        .route("/api/v1/audit", get(audit))
+        .route("/api/v1/audit", get(super::audit_api::audit))
         .route("/api/v1/intents", post(super::intents::route))
+        .route("/api/v1/events", get(super::events::route))
         .with_state(state)
 }
 
@@ -247,6 +212,7 @@ mod tests {
             forge: None,
             forge_cfgs: vec![],
             intents: None,
+            hub: crate::events::Hub::new(),
         };
         // Call the handler directly via router would need HTTP; instead
         // assert the derivation the handler relies on stays live.
@@ -275,20 +241,5 @@ mod tests {
         assert!(!first.is_empty());
         assert_eq!(first, second);
         let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn audit_filter_defaults_limit() {
-        let q = AuditQuery {
-            actor: None,
-            repo: Some("o/r".into()),
-            kind: None,
-            since: None,
-            until: None,
-            limit: None,
-        };
-        let f = to_filter(&q);
-        assert_eq!(f.limit, 100);
-        assert_eq!(f.repo.as_deref(), Some("o/r"));
     }
 }

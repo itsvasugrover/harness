@@ -146,3 +146,39 @@ async fn unwatched_repo_conflicts() {
     assert!(!out.applied);
     assert_eq!(*counts.comments.lock().unwrap(), 0);
 }
+
+#[tokio::test]
+async fn conflicts_land_in_the_audit_ledger() {
+    let dir = std::env::temp_dir().join(format!("hx-intent-audit-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(dir.join("db")).unwrap();
+    let ledger = ledger_sentinel::ledger::Ledger::open(dir.to_str().unwrap())
+        .await
+        .unwrap();
+    let ledger = Arc::new(tokio::sync::Mutex::new(ledger));
+    let (store, clients, forges, _counts) = deps("merged").await;
+    let out = dispatch(
+        &store,
+        &clients,
+        &forges,
+        Some(ledger.clone()),
+        &req("m9", "approve_pr"),
+    )
+    .await;
+    assert!(!out.applied);
+    let rows = ledger
+        .lock()
+        .await
+        .query(&ledger_sentinel::ledger::AuditFilter {
+            actor: None,
+            repo: None,
+            kind: Some("approve_pr".into()),
+            since: None,
+            until: None,
+            limit: 10,
+        })
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].verdict, "conflict");
+    let _ = std::fs::remove_dir_all(&dir);
+}

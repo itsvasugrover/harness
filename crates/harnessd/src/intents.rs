@@ -59,17 +59,23 @@ pub async fn dispatch(
         return unsupported(&id, &format!("unknown kind '{kind}'"));
     }
     let Some(cfg) = forges.iter().find(|f| f.repos.iter().any(|r| r == &repo)) else {
-        return conflict(&id, format!("repo {repo} is not watched by this daemon"));
+        let out = conflict(&id, format!("repo {repo} is not watched by this daemon"));
+        audit(&audit_log, &repo, &kind, &out.summary, "conflict", &id).await;
+        return out;
     };
     let Some(client) = clients.get(&cfg.kind) else {
-        return conflict(&id, format!("forge '{}' has no credentials here", cfg.kind));
+        let out = conflict(&id, format!("forge '{}' has no credentials here", cfg.kind));
+        audit(&audit_log, &repo, &kind, &out.summary, "conflict", &id).await;
+        return out;
     };
     // World check against the live PR: merged/deleted targets conflict.
     let pull = match client.pull(&repo, number).await {
         Ok(p) => p,
         Err(e) => {
             let reason = forge_bridge::mask::mask_secrets(&format!("target unreadable: {e:#}"));
-            return conflict(&id, reason);
+            let out = conflict(&id, reason);
+            audit(&audit_log, &repo, &kind, &out.summary, "conflict", &id).await;
+            return out;
         }
     };
     let world = forge_bridge::intents::WorldState {
@@ -200,6 +206,7 @@ pub(crate) async fn route(
         &body,
     )
     .await;
+    state.hub.publish("intent", &out.summary).await;
     let status = if out.applied {
         StatusCode::OK
     } else if out.choices.is_empty() {
