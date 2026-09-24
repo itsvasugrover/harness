@@ -3,6 +3,7 @@ mod api;
 mod board;
 mod checkpoint;
 mod config;
+mod config_sections;
 mod doctor;
 #[allow(dead_code)] // run-path lease wiring consumes this in Phase 5.
 mod forge_exec;
