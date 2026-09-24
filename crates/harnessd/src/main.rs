@@ -8,6 +8,7 @@ mod doctor;
 #[allow(dead_code)] // run-path lease wiring consumes this in Phase 5.
 mod forge_exec;
 mod forge_facts;
+mod forge_gate;
 mod forge_ops;
 mod goal;
 mod keys;
@@ -156,24 +157,29 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
-            let mut state = api::AppState::default();
+            let mut state = api::AppState::new(api::load_or_create_host_id(&data_dir));
             // Audit ledger serves GET /api/v1/audit; a failed open
-            // serves [] rather than failing boot.
-            if let Ok(ledger) = ledger_sentinel::ledger::Ledger::open(&data_dir).await {
-                state.audit = Some(std::sync::Arc::new(tokio::sync::Mutex::new(ledger)));
+            // serves [] rather than failing boot (loud, not silent).
+            match ledger_sentinel::ledger::Ledger::open(&data_dir).await {
+                Ok(ledger) => {
+                    state.audit = Some(std::sync::Arc::new(tokio::sync::Mutex::new(ledger)));
+                }
+                Err(e) => {
+                    eprintln!("audit: ledger open failed, serving []: {e:#}");
+                }
             }
             // Boot: board.json from finished runs wins; else derive
             // live facts from the resume scan of stored sessions.
             let boot_facts = goal::load_facts(&data_dir);
             if !boot_facts.is_empty() {
-                *state.facts.lock().expect("facts lock poisoned") = boot_facts;
+                *state.facts.write().await = boot_facts;
             } else if let Ok(store) = work_engine::store::Store::open(&format!(
                 "sqlite://{data_dir}/db/harness.db?mode=rwc"
             ))
             .await
             {
                 if let Ok(items) = resume::plan(&store, &format!("{data_dir}/work")).await {
-                    let mut facts = state.facts.lock().expect("facts lock poisoned");
+                    let mut facts = state.facts.write().await;
                     for item in &items {
                         facts.push(board::CardFacts {
                             worker_id: item.session_id.clone(),
@@ -192,10 +198,50 @@ async fn main() -> Result<()> {
                     println!("resume: {} sessions", items.len());
                 }
             }
+            // Best-effort PR hydration so the unified board has rows on boot.
+            // Observer keeps mirroring after; failures stay empty, never fail boot.
+            if let Ok(facts_db) = forge_facts::ForgeFacts::open(&format!(
+                "sqlite://{data_dir}/db/harness.db?mode=rwc"
+            ))
+            .await
+            {
+                let mut all_prs = vec![];
+                for f in &merged.forges {
+                    for repo in &f.repos {
+                        if let Ok(cards) = facts_db.pr_cards(repo).await {
+                            all_prs.extend(cards);
+                        }
+                    }
+                }
+                *state.prs.write().await = all_prs;
+            }
             let app = model_switchboard::gateway::router(catalog).merge(api::router(state.clone()));
             // Forge observer: background tasks mirror PR facts the Kanban
             // derives from. Idle without configured forges, never fails boot.
             observer::spawn_forges(&merged.forges, &data_dir).await;
+            // Keep the served PR cards fresh without blocking boot.
+            {
+                let prs = state.prs.clone();
+                let forges = merged.forges.clone();
+                let db_url = format!("sqlite://{data_dir}/db/harness.db?mode=rwc");
+                tokio::spawn(async move {
+                    let Ok(facts_db) = forge_facts::ForgeFacts::open(&db_url).await else {
+                        return;
+                    };
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                        let mut all = vec![];
+                        for f in &forges {
+                            for repo in &f.repos {
+                                if let Ok(cards) = facts_db.pr_cards(repo).await {
+                                    all.extend(cards);
+                                }
+                            }
+                        }
+                        *prs.write().await = all;
+                    }
+                });
+            }
             let listener = tokio::net::TcpListener::bind(&bind).await?;
             match (lan_bind, lan_bearer) {
                 (Some(lan), Some(bearer)) if !bearer.is_empty() => {

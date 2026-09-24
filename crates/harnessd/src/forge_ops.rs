@@ -3,6 +3,10 @@
 //! only translates ops to trait calls and shapes results for the model.
 use forge_bridge::mask::mask_secrets;
 use forge_bridge::port::{CapabilityLease, Forge, NewIssue, NewPull, Search};
+use ledger_sentinel::{
+    policy::Policy,
+    review_gate::{evaluate, Verdict},
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -84,6 +88,15 @@ pub(crate) async fn run_op(
         }
         "merge" => {
             let n = v.get("number").and_then(|x| x.as_u64()).unwrap_or(0);
+            // Live gate: facts + approvals into evaluate() before any merge.
+            // Block verdicts fail as tool errors; warn passes with reasons.
+            let pull_detail = client.pull(repo, n).await?;
+            let approved = v.get("approved").and_then(|x| x.as_bool()).unwrap_or(false);
+            let input = super::forge_gate::merge_input_from_pull(&pull_detail, approved);
+            let (verdict, reasons) = evaluate(&Policy::default(), &input);
+            if verdict == Verdict::Block {
+                anyhow::bail!("merge blocked by review gate: {}", reasons.join("; "));
+            }
             let r = client
                 .merge(
                     repo,

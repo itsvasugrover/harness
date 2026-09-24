@@ -7,4 +7,8 @@ pub mod glob;
 pub mod grep;
 pub mod read;
 pub mod recall;
+pub mod skill;
+pub mod task;
+pub mod todo;
+pub mod webfetch;
 pub mod write;

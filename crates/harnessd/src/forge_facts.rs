@@ -148,7 +148,6 @@ impl ForgeFacts {
 
     /// One Kanban-ready row per stored PR: facts joined so the board
     /// derives columns without touching the forge.
-    #[allow(dead_code)] // board API exposure consumes this in Phase 5.
     pub async fn pr_cards(&self, repo: &str) -> Result<Vec<PrCard>> {
         let rows = sqlx::query_as::<_, (i64, String, String, String, i64)>(
             "SELECT number, title, state, head_sha, mergeable FROM pr_facts
@@ -162,6 +161,7 @@ impl ForgeFacts {
             let checks_green = self.failing_checks(repo, &head_sha).await?.is_empty();
             let unresolved = self.unresolved_threads(repo, number).await?;
             cards.push(PrCard {
+                repo: repo.into(),
                 number,
                 title,
                 state,
@@ -176,9 +176,9 @@ impl ForgeFacts {
 
 /// Board input for one PR. `checks_green` is true when the forge
 /// reports no failing checks (absent checks read green).
-#[allow(dead_code)] // board API exposure consumes this in Phase 5.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrCard {
+    pub repo: String,
     pub number: i64,
     pub title: String,
     pub state: String,

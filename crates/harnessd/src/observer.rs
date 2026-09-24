@@ -6,6 +6,7 @@ use super::forge_facts::ForgeFacts;
 use anyhow::Result;
 use forge_bridge::mask::mask_secrets;
 use forge_bridge::port::{Forge, Search};
+use tokio::sync::Semaphore;
 
 /// Structured follow-up for the owning worker: failed CI or open
 /// review threads, with the exact blocker named. Logs get trimmed
@@ -17,8 +18,13 @@ pub struct FollowUp {
     pub reason: String,
 }
 
+/// Max concurrent PR detail fetches per poll (bounds forge burst).
+pub const DETAIL_CONCURRENCY: usize = 4;
+
 /// One poll of a single repo: discover open PRs, refresh their facts,
 /// and report what needs a human or worker. Pure against any `Forge`.
+/// Concurrent repo polls are bounded by DETAIL_CONCURRENCY; per-PR detail
+/// stays sequential inside a poll for forge rate limits.
 pub async fn poll_once(
     forge: &(dyn Forge + Sync),
     repo: &str,
@@ -110,6 +116,7 @@ pub async fn spawn_forges(cfgs: &[super::config::ForgeCfg], data_dir: &str) {
     else {
         return;
     };
+    let poll_slots = std::sync::Arc::new(Semaphore::new(DETAIL_CONCURRENCY));
     for forge_cfg in cfgs {
         let env_refs: Vec<&str> = forge_cfg.env.iter().map(String::as_str).collect();
         let account = format!("forge-{}", forge_cfg.kind);
@@ -149,9 +156,15 @@ pub async fn spawn_forges(cfgs: &[super::config::ForgeCfg], data_dir: &str) {
             let facts = facts.clone();
             let task_client = client.clone();
             let interval = forge_cfg.interval();
+            let poll_slots = poll_slots.clone();
             let mask = forge_bridge::mask::mask_secrets;
             tokio::spawn(async move {
                 loop {
+                    let _permit = poll_slots
+                        .clone()
+                        .acquire_owned()
+                        .await
+                        .expect("semaphore closed");
                     match poll_once(&**task_client, &repo, &facts).await {
                         Ok(items) => {
                             for f in items {
