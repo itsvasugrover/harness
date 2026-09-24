@@ -13,3 +13,5 @@ noyalib = { workspace = true }
 sha2 = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
+reqwest = { workspace = true }
+uuid = { workspace = true }

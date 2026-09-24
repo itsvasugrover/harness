@@ -44,7 +44,8 @@ impl Default for Registry {
 /// The Phase-1 tools every agent receives.
 pub fn builtins() -> Registry {
     use super::tools::{
-        bash::Bash, edit::Edit, glob::Glob, grep::Grep, read::Read, recall::Recall, write::Write,
+        bash::Bash, edit::Edit, glob::Glob, grep::Grep, read::Read, recall::Recall, skill::Skill,
+        task::Task, todo::Todo, webfetch::Webfetch, write::Write,
     };
     let mut r = Registry::new();
     r.register(Read);
@@ -54,6 +55,10 @@ pub fn builtins() -> Registry {
     r.register(Glob);
     r.register(Grep);
     r.register(Recall);
+    r.register(Skill);
+    r.register(Task);
+    r.register(Todo);
+    r.register(Webfetch);
     r
 }
 
