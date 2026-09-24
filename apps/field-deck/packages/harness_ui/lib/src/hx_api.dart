@@ -146,6 +146,21 @@ class HxApiException implements Exception {
   String toString() => 'HxApiException($status): $message';
 }
 
+/// Decoded intent envelope: 200 applied, 409 conflict with choices,
+/// 422 for kinds the daemon cannot execute yet.
+class HxIntentResult {
+  final int status;
+  final bool applied;
+  final String summary;
+  final List<String> choices;
+  const HxIntentResult({
+    required this.status,
+    required this.applied,
+    required this.summary,
+    required this.choices,
+  });
+}
+
 /// Thin client over the versioned daemon API. Bearer goes on every
 /// route except the identity probe; tokens live in secure storage and
 /// never touch logs (see field_deck session handling).
@@ -166,6 +181,35 @@ class HxApi {
   Future<HxBoard> board() async {
     final json = await _get('/api/v1/board');
     return HxBoard.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Submit a phone intent for replay. 200/409/422 decode into the
+  /// result envelope; anything else is a transport failure.
+  Future<HxIntentResult> postIntent(Map<String, dynamic> body) async {
+    final uri = Uri.parse('$baseUrl/api/v1/intents');
+    final req = await _http.postUrl(uri).timeout(const Duration(seconds: 15));
+    req.headers.contentType = ContentType.json;
+    if (bearer.isNotEmpty) {
+      req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
+    }
+    req.write(jsonEncode(body));
+    final res = await req.close().timeout(const Duration(seconds: 15));
+    final decoded = jsonDecode(await res.transform(utf8.decoder).join());
+    final map = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+    if (res.statusCode == HttpStatus.ok ||
+        res.statusCode == HttpStatus.conflict ||
+        res.statusCode == HttpStatus.unprocessableEntity) {
+      return HxIntentResult(
+        status: res.statusCode,
+        applied: map['applied'] as bool? ?? false,
+        summary: map['summary'] as String? ?? '',
+        choices: [for (final c in (map['choices'] as List? ?? const [])) '$c'],
+      );
+    }
+    if (res.statusCode == HttpStatus.unauthorized) {
+      throw const HxApiException(401, 'bearer rejected — re-pair in Settings');
+    }
+    throw HxApiException(res.statusCode, 'intent failed (${res.statusCode})');
   }
 
   Future<List<HxAuditEvent>> audit({int limit = 50}) async {

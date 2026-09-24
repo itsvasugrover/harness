@@ -237,6 +237,19 @@ impl Forge for GitHub {
             state: "requested".into(),
         })
     }
+
+    async fn approve(&self, repo: &str, number: u64, body: &str) -> Result<Review> {
+        let payload = serde_json::json!({"body": body, "event": "APPROVE"});
+        http::approve_review(
+            &format!("Bearer {}", self.token),
+            self.http_client
+                .post(self.url(&format!("/repos/{repo}/pulls/{number}/reviews")))
+                .json(&payload),
+            repo,
+            number,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]

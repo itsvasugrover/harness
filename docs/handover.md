@@ -87,12 +87,11 @@ Built and green (`build`, `test`, `clippy -D warnings`, `fmt --check`,
 ## Next work (in order)
 
 1. **Phase 5 (now):** session write scopes (writes stay ungranted
-    past `forge.read` until approval scopes land), then Phase 5b:
-    daemon intent-replay endpoint (approve/retry/comment with
-    idempotency ids + audit), Tauri window/command bindings + PTY,
-    SSE push, generated TS/Dart clients. Phase 5a decks (sidecar,
-    web UI supervision, phone supervision + queue) are live per the
-    deck docs.
+    past `forge.read` until approval scopes land), then Phase 5c:
+    retry run-loop binding, Tauri window/command bindings + PTY, SSE
+    push, generated TS/Dart clients. Phase 5a decks plus 5b intent
+    replay (`POST /api/v1/intents`: approve/comment idempotent +
+    audited, retry explicit 422) are live per the deck docs.
 2. Then roadmap Phase 6 (hardening); bets attach to their staging
    phase. `work-engine` `forge` tool and `DaemonForge` are ready and
    waiting on the lease wiring.

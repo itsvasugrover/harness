@@ -21,6 +21,12 @@ impl DaemonForge {
         self.clients.insert(name.into(), client);
     }
 
+    /// Client behind a configured forge name (intent replay resolves the
+    /// repo to its forge, then executes lease-scoped through `run_op`).
+    pub(crate) fn client(&self, name: &str) -> Option<Arc<dyn Forge + Send + Sync>> {
+        self.clients.get(name).cloned()
+    }
+
     /// Build from config, resolving tokens (env, then keychain) and
     /// skipping forges without credentials. Never logs secrets.
     pub fn build(cfg: &super::config::HarnessConfig) -> Self {

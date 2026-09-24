@@ -251,6 +251,13 @@ mod tests {
         async fn request_review(&self, _r: &str, _n: u64, _v: &[String]) -> anyhow::Result<Review> {
             Ok(Review::default())
         }
+        async fn approve(&self, _r: &str, n: u64, _b: &str) -> anyhow::Result<Review> {
+            Ok(Review {
+                id: format!("approved-{n}"),
+                state: "APPROVED".into(),
+                ..Default::default()
+            })
+        }
     }
 
     #[tokio::test]

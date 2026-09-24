@@ -31,6 +31,7 @@ impl ForgeTool {
             "issues" | "issue" | "pull" | "pulls" | "checks" => "forge.read",
             "open_issue" => "issue.write",
             "comment" => "pr.comment",
+            "approve" => "pr.approve",
             "open_pull" => "pr.open",
             "merge" => "pr.merge",
             "review" => "review.request",

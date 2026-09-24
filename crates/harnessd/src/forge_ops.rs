@@ -106,6 +106,11 @@ pub(crate) async fn run_op(
                 .await?;
             format!("merged={} sha={}", r.merged, r.sha.unwrap_or_default())
         }
+        "approve" => {
+            let n = v.get("number").and_then(|x| x.as_u64()).unwrap_or(0);
+            let r = client.approve(repo, n, &str_of(&v, "body")).await?;
+            format!("approved {} {}", r.id, r.state)
+        }
         "checks" => {
             let sha = match v.get("sha").and_then(|x| x.as_str()) {
                 Some(s) => s.to_string(),
@@ -222,6 +227,13 @@ mod tests {
         }
         async fn request_review(&self, _r: &str, _n: u64, _v: &[String]) -> anyhow::Result<Review> {
             Ok(Review::default())
+        }
+        async fn approve(&self, _r: &str, n: u64, _b: &str) -> anyhow::Result<Review> {
+            Ok(Review {
+                id: format!("approved-{n}"),
+                state: "APPROVED".into(),
+                ..Default::default()
+            })
         }
     }
 

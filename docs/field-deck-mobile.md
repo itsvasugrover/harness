@@ -1,13 +1,14 @@
 # Field Deck (Flutter Android supervisor, v1)
 
-Status: Phase 5a live. `harness_ui` ships the seed-color theme,
+Status: Phase 5b live. `harness_ui` ships the seed-color theme,
 `HxText`/`HxCard`/`HxBadge`/`HxEmpty` primitives, pure-Dart API models
 (`dart analyze` clean), and the offline intent queue with idempotency
 ids. The `field_deck` app has all five tabs (board, worker, review
-inbox, audit, pairing settings) over the live API. Still pending: the
-daemon intent-replay endpoint the queue targets, SSE push, and the
-Flutter SDK verification pass (`flutter analyze/test` — no SDK in CI
-yet).
+inbox, audit, pairing settings) over the live API, and the queue
+replays approve/comment intents through POST /api/v1/intents via an
+explicit Sync action. Still pending: the retry-kind run-loop binding,
+SSE push, and the Flutter SDK verification pass
+(`flutter analyze/test` — no SDK in CI yet).
 
 Supervisor-only companion: watch the board, read diffs, approve/retry,
 view audit. It never executes agents or tools.

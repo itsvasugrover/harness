@@ -11,6 +11,10 @@ mod forge_facts;
 mod forge_gate;
 mod forge_ops;
 mod goal;
+mod intent_store;
+#[cfg(test)]
+mod intent_tests;
+mod intents;
 mod keys;
 #[allow(dead_code)] // run loop passes MCP tools to workers next.
 mod mcp;
@@ -166,6 +170,20 @@ async fn main() -> Result<()> {
                 }
                 Err(e) => {
                     eprintln!("audit: ledger open failed, serving []: {e:#}");
+                }
+            }
+            // Intent replay: daemon clients plus the idempotency store.
+            // Missing pieces degrade to 503 on POST /api/v1/intents.
+            state.forge = Some(std::sync::Arc::new(forge_exec::DaemonForge::build(&merged)));
+            state.forge_cfgs = merged.forges.clone();
+            match intent_store::IntentStore::open(&format!(
+                "sqlite://{data_dir}/db/harness.db?mode=rwc"
+            ))
+            .await
+            {
+                Ok(store) => state.intents = Some(store),
+                Err(e) => {
+                    eprintln!("intents: store open failed, replay unavailable: {e:#}");
                 }
             }
             // Boot: board.json from finished runs wins; else derive
