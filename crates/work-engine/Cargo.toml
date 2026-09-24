@@ -1,0 +1,13 @@
+[package]
+name = "work-engine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+context-press = { path = "../context-press" }
+serde = { workspace = true }
+noyalib = { workspace = true }
+sha2 = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
