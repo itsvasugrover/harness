@@ -142,7 +142,6 @@ fn save_facts(data_dir: &str, facts: &[super::board::CardFacts]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[tokio::test]
     async fn two_units_run_concurrently() {

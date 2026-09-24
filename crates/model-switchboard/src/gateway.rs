@@ -47,9 +47,7 @@ pub fn route_model(
 ) -> Option<Routing> {
     let r = ModelRef::parse(model_str).ok()?;
     let base = resolve_base_url(catalog, &r)?.to_string();
-    if super::budget::pick(candidates, slo).is_none() {
-        return None;
-    }
+    super::budget::pick(candidates, slo)?;
     Some(Routing {
         provider: r.provider,
         model: r.model,

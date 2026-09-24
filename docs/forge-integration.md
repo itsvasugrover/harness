@@ -1,9 +1,10 @@
 # Forge Bridge (GitHub + Gitea, day-1 both)
 
-Status: design spec for Phase 4. Live today: `Forge` trait,
-`CapabilityLease`, offline `Intent` queue. Adapters, observer,
-merge gate, and secret masking are not code yet — anything below
-describing them is the target shape.
+Status: `Forge` trait, `CapabilityLease`, offline `Intent` queue,
+GitHub + Gitea adapters (`github.rs`, `gitea.rs` over shared
+`http.rs`/`parse.rs`), and secret masking (`mask.rs`) are live and
+tested. The observer, merge gate, and replay-conflict wiring are
+next — anything below describing them is still the target shape.
 
 One trait, two adapters. The agent and both decks never touch
 provider SDKs directly.
