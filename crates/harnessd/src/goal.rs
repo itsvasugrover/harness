@@ -24,21 +24,21 @@ pub async fn run_goal(
         .context("no key: set a provider env var or keychain entry")?;
     let mut set = tokio::task::JoinSet::new();
     // One read-only lease per goal when the repo is watched: workers
-    // can read issues/PRs/checks through the `forge` tool. Writes stay
-    // ungranted until session permission scopes land (Phase 5).
+    // can read issues/PRs/checks through the `forge` tool, plus the
+    // configured `writes` ops. The agent tool still enforces its own
+    // approval gate, and merges still pass the Sentinel review gate.
     let forge_exec = std::sync::Arc::new(super::forge_exec::DaemonForge::build(cfg));
     let forge = cfg
         .forges
         .iter()
         .find(|f| f.repos.iter().any(|r| r == repo))
-        .map(|f| super::run::ForgeScope {
-            lease: forge_bridge::port::CapabilityLease::mint(
-                &f.kind,
-                repo,
-                vec!["forge.read".into()],
-            ),
-            exec: forge_exec.clone(),
-        });
+        .map(|f| -> anyhow::Result<super::run::ForgeScope> {
+            Ok(super::run::ForgeScope {
+                lease: forge_bridge::port::CapabilityLease::mint(&f.kind, repo, f.lease_caps()?),
+                exec: forge_exec.clone(),
+            })
+        })
+        .transpose()?;
     for assignment in super::run::plan_goal(goal) {
         let ctx = Ctx {
             store: store.clone(),

@@ -104,6 +104,7 @@ async fn deps(
         env: vec![],
         repos: vec!["o/r".into()],
         poll_secs: 0,
+        writes: vec![],
     }];
     (store, clients, forges, fake)
 }
