@@ -5,6 +5,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Generated clients land in Phase 3; until then the spec must exist
+      # Generated clients land in Phase 5; until then the spec must exist
       # and stay valid YAML.
       - run: python3 -c "import yaml,sys; yaml.safe_load(open('openapi/openapi.yaml')); print('spec parses OK')"

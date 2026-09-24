@@ -32,7 +32,8 @@ lands after its parent phase — none block v1.
    plot get caught, not shipped.
 
 Staging: 6 + 2 land with Phase 3 (isolation exists), 1 + 7 with
-Phase 2 (metering exists), 3 + 4 + 5 + 8 harden toward v1.
+Phase 2 (metering exists), 11 (intent replay) is live in
+`forge-bridge`, 3 + 4 + 5 + 8 harden toward v1.
 
 9. **Repo fingerprint sync.** The daemon hashes `.harness/` +
    `AGENTS.md` per watched repo on every worker spawn and stores the
