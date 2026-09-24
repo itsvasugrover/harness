@@ -1,9 +1,11 @@
 # Ledger Sentinel (audit bot + review gate)
 
-Status: event shape + attribution + stable kinds + jury tally are
-live and tested. The JSONL writer, `/api/v1/audit` endpoint, policy
-engine, and CI triage/requirements workflows are Phase 4 — anything
-below describing them is the target shape.
+Status: event shape + attribution + stable kinds + jury tally +
+JSONL writer + SQLite index + `GET /api/v1/audit` + merge gate are
+live and tested. The policy engine's live wiring (CI scan inputs,
+human-approve plumbing from the decks) and the triage/requirements
+workflows are next — anything below describing them is the target
+shape.
 
 Every consequential action is checked before it runs and recorded
 after it runs. No silent merges, no phantom pushes.

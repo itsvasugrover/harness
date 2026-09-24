@@ -9,6 +9,10 @@ paths:
     get:
       summary: Derived Kanban columns (never stored).
       responses: { '200': { description: board } }
+  /api/v1/audit:
+    get:
+      summary: Append-only audit log with filters (actor, repo, kind, time).
+      responses: { '200': { description: audit } }
   /v1/models:
     get:
       summary: OpenAI-compatible model catalog.
