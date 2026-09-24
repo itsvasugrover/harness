@@ -49,7 +49,7 @@ async fn identity() -> Json<Identity> {
 }
 
 async fn board(State(state): State<AppState>) -> Json<Vec<(super::board::Column, String)>> {
-    let facts = state.facts.lock().unwrap().clone();
+    let facts = state.facts.lock().expect("facts lock poisoned").clone();
     Json(
         facts
             .into_iter()

@@ -138,7 +138,8 @@ pub fn load_commands(dir: &str, layer: &str) -> Vec<CommandEntry> {
     out
 }
 
-/// Agent names from `<dir>/*.yaml` (stem, or the `name:` field).
+/// Agent names from `<dir>/*.yaml`: the `name:` field when present,
+/// else the file stem.
 pub fn load_agents(dir: &str) -> Vec<String> {
     let mut out = vec![];
     let Ok(read) = std::fs::read_dir(dir) else {
@@ -156,9 +157,25 @@ pub fn load_agents(dir: &str) -> Vec<String> {
             .and_then(|x| x.to_str())
             .unwrap_or("")
             .into();
-        out.push(stem);
+        out.push(agent_name(&path, stem));
     }
     out
+}
+
+/// Agent display name: the file's `name:` field when present, else stem.
+fn agent_name(path: &std::path::Path, stem: String) -> String {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return stem;
+    };
+    for line in text.lines() {
+        if let Some(name) = line.strip_prefix("name:") {
+            let name = name.trim().trim_matches('"').to_string();
+            if !name.is_empty() {
+                return name;
+            }
+        }
+    }
+    stem
 }
 
 /// Merged `help` listing with layer tags for agents and the phone.
@@ -203,7 +220,7 @@ mod tests {
             "# /go — ship it\nRun the thing.\n",
         )
         .unwrap();
-        std::fs::write(dir.join("agents").join("scout.yaml"), "name: scout\n").unwrap();
+        std::fs::write(dir.join("agents").join("scout.yaml"), "name: pathfinder\n").unwrap();
         dir.to_string_lossy().into()
     }
 
@@ -223,6 +240,6 @@ mod tests {
         assert_eq!(merged.entries[0].layer, "local");
         let cmds = load_commands(&format!("{g}/commands"), "global");
         assert_eq!(cmds.len(), 1);
-        assert_eq!(load_agents(&format!("{g}/agents")), vec!["scout"]);
+        assert_eq!(load_agents(&format!("{g}/agents")), vec!["pathfinder"]);
     }
 }
