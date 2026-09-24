@@ -165,14 +165,14 @@ async fn main() -> Result<()> {
             // live facts from the resume scan of stored sessions.
             let boot_facts = goal::load_facts(&data_dir);
             if !boot_facts.is_empty() {
-                *state.facts.lock().unwrap() = boot_facts;
+                *state.facts.lock().expect("facts lock poisoned") = boot_facts;
             } else if let Ok(store) = work_engine::store::Store::open(&format!(
                 "sqlite://{data_dir}/db/harness.db?mode=rwc"
             ))
             .await
             {
                 if let Ok(items) = resume::plan(&store, &format!("{data_dir}/work")).await {
-                    let mut facts = state.facts.lock().unwrap();
+                    let mut facts = state.facts.lock().expect("facts lock poisoned");
                     for item in &items {
                         facts.push(board::CardFacts {
                             worker_id: item.session_id.clone(),
