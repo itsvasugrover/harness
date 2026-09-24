@@ -59,6 +59,11 @@ forges:
     env: [GH_TOKEN]
     repos: [your-org/your-repo]
     poll_secs: 30
+    # Session write scopes: forge ops an approved session lease may
+    # perform. Empty or absent preserves the read-only default.
+    # Valid: comment, approve, open_issue, open_pull, merge, review.
+    # Merge still passes the Sentinel review gate per call.
+    # writes: [comment, approve]
   # - kind: gitea
   #   base_url: https://git.example.com
   #   env: [GITEA_TOKEN]

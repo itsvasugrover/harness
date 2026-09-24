@@ -86,15 +86,14 @@ Built and green (`build`, `test`, `clippy -D warnings`, `fmt --check`,
 
 ## Next work (in order)
 
-1. **Phase 5 (now):** session write scopes (writes stay ungranted
-    past `forge.read` until approval scopes land), then the rest of
-    Phase 5: retry run-loop binding, Tauri window/command bindings +
-    PTY, phone stream wiring, generated TS/Dart clients. Live: Phase
-    5a decks, 5b intent replay (`POST /api/v1/intents`:
-    approve/comment idempotent + audited, retry explicit 422),     5c SSE
-    (`GET /api/v1/events` with cursor replay; web UI streams live
-    with polling fallback), 5d retry recheck (fresh facts + gate
-    verdict + audit) and the wired phone stream.
+1. **Phase 5 (now):** Tauri window/command bindings + PTY, phone
+    stream wiring, generated TS/Dart clients. Live: Phase 5a decks,
+    5b intent replay (`POST /api/v1/intents`: approve/comment
+    idempotent + audited), 5c SSE (`GET /api/v1/events` with cursor
+    replay; web UI streams live with polling fallback), 5d retry
+    recheck plus the wired phone stream, 5e session write scopes
+    (`forges[].writes` into lease caps; approval gate + merge gate
+    stay independent).
 2. Then roadmap Phase 6 (hardening); bets attach to their staging
    phase. `work-engine` `forge` tool and `DaemonForge` are ready and
    waiting on the lease wiring.

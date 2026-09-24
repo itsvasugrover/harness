@@ -88,6 +88,11 @@ pub struct ForgeCfg {
     pub repos: Vec<String>,
     #[serde(default)]
     pub poll_secs: u64,
+    /// Session write scopes: forge ops an approved session lease may
+    /// perform (comment, approve, open_issue, open_pull, merge,
+    /// review). Empty or absent preserves the read-only default.
+    #[serde(default)]
+    pub writes: Vec<String>,
 }
 
 impl ForgeCfg {
@@ -101,10 +106,57 @@ impl ForgeCfg {
     }
 }
 
+impl ForgeCfg {
+    /// Session lease capabilities: forge.read always, plus one cap per
+    /// listed write op. Unknown ops fail loud (strict config parity);
+    /// merge still passes the Sentinel review gate per call.
+    pub fn lease_caps(&self) -> anyhow::Result<Vec<String>> {
+        let mut caps = vec!["forge.read".to_string()];
+        for op in &self.writes {
+            let cap = match op.as_str() {
+                "comment" => "pr.comment",
+                "approve" => "pr.approve",
+                "open_issue" => "issue.write",
+                "open_pull" => "pr.open",
+                "merge" => "pr.merge",
+                "review" => "review.request",
+                other => anyhow::bail!(
+                    "forge writes: unknown op '{other}' (want comment|approve|open_issue|open_pull|merge|review)"
+                ),
+            };
+            caps.push(cap.into());
+        }
+        Ok(caps)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::config::{merge, HarnessConfig};
     use super::*;
+
+    #[test]
+    fn write_scopes_map_to_lease_caps() {
+        let scoped = ForgeCfg {
+            writes: vec!["comment".into(), "approve".into()],
+            ..Default::default()
+        };
+        assert_eq!(
+            scoped.lease_caps().unwrap(),
+            vec![
+                "forge.read".to_string(),
+                "pr.comment".to_string(),
+                "pr.approve".to_string()
+            ]
+        );
+        let bare = ForgeCfg::default();
+        assert_eq!(bare.lease_caps().unwrap(), vec!["forge.read".to_string()]);
+        let bad = ForgeCfg {
+            writes: vec!["nuke".into()],
+            ..Default::default()
+        };
+        assert!(bad.lease_caps().is_err());
+    }
 
     #[test]
     fn forges_extend_and_default_poll() {
