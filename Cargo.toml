@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "apps/command-deck/src-tauri",
   "crates/harnessd",
   "crates/work-engine",
   "crates/model-switchboard",

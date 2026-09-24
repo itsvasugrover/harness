@@ -1,0 +1,12 @@
+[package]
+name = "command-deck-sidecar"
+version = "0.1.0"
+edition = "2021"
+description = "Command Deck sidecar: harnessd lifecycle for the Tauri shell (std-only)"
+
+[lib]
+name = "command_deck_sidecar"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
