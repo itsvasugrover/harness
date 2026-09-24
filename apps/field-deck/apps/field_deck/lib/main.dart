@@ -86,6 +86,12 @@ class _HxShellState extends State<HxShell> {
         queued: _queue.length,
         // ignore: unawaited_futures (pairing save completes in background)
         onSaved: (host, bearer) => _savePairing(host, bearer),
+        onSync: () async {
+          final report = await replayQueue(api, _queue);
+          await saveQueue(_queue);
+          if (mounted) setState(() {});
+          return report.summary;
+        },
       ),
     ];
     return Scaffold(

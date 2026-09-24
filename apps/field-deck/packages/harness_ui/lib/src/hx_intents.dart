@@ -10,7 +10,9 @@ import 'dart:math';
 enum HxIntentKind { approvePr, retryWorker, comment }
 
 /// Outcome of replaying one intent against a moved world.
-enum HxConflict { none, staleTarget, alreadyApplied }
+/// `unsupported` means the daemon cannot execute the kind yet — the
+/// reason names the follow-up, and the intent stays queued.
+enum HxConflict { none, staleTarget, alreadyApplied, unsupported }
 
 class HxIntent {
   final String idempotencyId;

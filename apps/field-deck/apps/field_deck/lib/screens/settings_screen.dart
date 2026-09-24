@@ -9,11 +9,13 @@ class HxSettingsScreen extends StatefulWidget {
   final HxConnection connection;
   final int queued;
   final void Function(String host, String bearer) onSaved;
+  final Future<String> Function() onSync;
   const HxSettingsScreen({
     super.key,
     required this.connection,
     required this.queued,
     required this.onSaved,
+    required this.onSync,
   });
 
   @override
@@ -24,6 +26,7 @@ class _HxSettingsScreenState extends State<HxSettingsScreen> {
   late final TextEditingController _host;
   late final TextEditingController _bearer;
   String? _probe;
+  String? _sync;
 
   @override
   void initState() {
@@ -106,6 +109,19 @@ class _HxSettingsScreenState extends State<HxSettingsScreen> {
           '${widget.queued} intent(s) queued — replay on reconnect.',
           role: HxTextRole.body,
         ),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          onPressed: () async {
+            setState(() => _sync = 'syncing…');
+            final report = await widget.onSync();
+            if (mounted) setState(() => _sync = report);
+          },
+          child: const Text('Sync now'),
+        ),
+        if (_sync != null) ...[
+          const SizedBox(height: 8),
+          HxText(_sync!, role: HxTextRole.mono),
+        ],
       ],
     );
   }
