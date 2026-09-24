@@ -1,24 +1,23 @@
-// Board tab: derived Kanban from the live daemon API.
-// Pull-to-refresh plus a 15s floor on background polls; the phone
-// never computes columns, it renders the daemon's verdicts.
+// Board tab: derived Kanban over the live event stream.
+// Initial authoritative fetch, then stream frames trigger refetches;
+// the cursor persists so reconnects resume instead of restarting.
+// Stream loss surfaces the cached board with a manual retry.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:harness_ui/harness_ui.dart';
 
-const _columns = [
-  'working',
-  'needs_you',
-  'in_review',
-  'ready_to_merge',
-  'done',
-];
+import '../session.dart' show loadCursor, saveCursor;
+
+const _columns = ['working', 'needs_you', 'in_review', 'ready_to_merge', 'done'];
 
 String _label(String column) => switch (column) {
-  'working' => 'Working',
-  'needs_you' => 'Needs you',
-  'in_review' => 'In review',
-  'ready_to_merge' => 'Ready',
-  _ => 'Done',
-};
+      'working' => 'Working',
+      'needs_you' => 'Needs you',
+      'in_review' => 'In review',
+      'ready_to_merge' => 'Ready',
+      _ => 'Done',
+    };
 
 class HxBoardScreen extends StatefulWidget {
   final HxApi api;
@@ -29,82 +28,109 @@ class HxBoardScreen extends StatefulWidget {
 }
 
 class _HxBoardScreenState extends State<HxBoardScreen> {
-  late Future<HxBoard> _future;
+  HxBoard? _board;
+  String? _error;
+  StreamSubscription<HxServerEvent>? _sub;
 
   @override
   void initState() {
     super.initState();
-    _future = widget.api.board();
+    _boot();
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _boot() async {
+    final cursor = await loadCursor();
+    if (!mounted) return;
+    await _fetch();
+    _subscribe(cursor);
+  }
+
+  Future<void> _fetch() async {
+    try {
+      final board = await widget.api.board();
+      if (!mounted) return;
+      setState(() {
+        _board = board;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '$e');
+    }
+  }
+
+  void _subscribe(int cursor) {
+    unawaited(_sub?.cancel());
+    _sub = widget.api.events(cursor: cursor).listen(
+      (frame) async {
+        if (frame.id != null) await saveCursor(frame.id!);
+        await _fetch();
+      },
+      onError: (Object e) {
+        if (!mounted) return;
+        setState(() => _error = '$e');
+      },
+    );
   }
 
   Future<void> _refresh() async {
-    final board = await widget.api.board();
-    if (mounted) setState(() => _future = Future.value(board));
+    await _fetch();
+    _subscribe(await loadCursor());
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<HxBoard>(
-      future: _future,
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snap.hasError || !snap.hasData) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                HxText(
-                  'Board unreachable: ${snap.error ?? 'unknown'}',
-                  role: HxTextRole.caption,
-                ),
-                const SizedBox(height: 8),
-                FilledButton(
-                  onPressed: () => setState(() => _future = widget.api.board()),
-                  child: const Text('Retry'),
-                ),
-              ],
+    final board = _board;
+    if (board == null && _error == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (board == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            HxText('Board unreachable: ${_error ?? 'unknown'}',
+                role: HxTextRole.caption),
+            const SizedBox(height: 8),
+            FilledButton(onPressed: _boot, child: const Text('Retry')),
+          ],
+        ),
+      );
+    }
+    if (board.workers.isEmpty && board.prs.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView(
+          children: const [
+            HxEmpty(
+              icon: Icons.inbox_outlined,
+              title: 'Nothing on the board',
+              hint: 'Run a goal on the desktop; workers appear here.',
             ),
-          );
-        }
-        final board = snap.data!;
-        if (board.workers.isEmpty && board.prs.isEmpty) {
-          return RefreshIndicator(
-            onRefresh: _refresh,
-            child: ListView(
-              children: const [
-                HxEmpty(
-                  icon: Icons.inbox_outlined,
-                  title: 'Nothing on the board',
-                  hint: 'Run a goal on the desktop; workers appear here.',
-                ),
-              ],
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.all(8),
+        children: [
+          for (final col in _columns)
+            _Column(
+              title: _label(col),
+              workers: [for (final w in board.workers) if (w.column == col) w],
+              prs: [for (final p in board.prs) if (p.column == col) p],
             ),
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: _refresh,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.all(8),
-            children: [
-              for (final col in _columns)
-                _Column(
-                  title: _label(col),
-                  workers: [
-                    for (final w in board.workers)
-                      if (w.column == col) w,
-                  ],
-                  prs: [
-                    for (final p in board.prs)
-                      if (p.column == col) p,
-                  ],
-                ),
-            ],
-          ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
@@ -113,11 +139,7 @@ class _Column extends StatelessWidget {
   final String title;
   final List<HxWorkerCard> workers;
   final List<HxPrCard> prs;
-  const _Column({
-    required this.title,
-    required this.workers,
-    required this.prs,
-  });
+  const _Column({required this.title, required this.workers, required this.prs});
 
   @override
   Widget build(BuildContext context) {
@@ -128,10 +150,8 @@ class _Column extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.all(8),
-            child: HxText(
-              '$title (${workers.length + prs.length})',
-              role: HxTextRole.title,
-            ),
+            child: HxText('$title (${workers.length + prs.length})',
+                role: HxTextRole.title),
           ),
           Expanded(
             child: ListView(
@@ -153,9 +173,8 @@ class _WorkerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = worker.completed
-        ? 'finished'
-        : (worker.blocked ?? 'running');
+    final status =
+        worker.completed ? 'finished' : (worker.blocked ?? 'running');
     return HxCard(
       onTap: () => showModalBottomSheet<void>(
         context: context,
@@ -184,10 +203,8 @@ class _PrTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          HxText(
-            pr.repo.isEmpty ? '#${pr.number}' : '${pr.repo}#${pr.number}',
-            role: HxTextRole.mono,
-          ),
+          HxText(pr.repo.isEmpty ? '#${pr.number}' : '${pr.repo}#${pr.number}',
+              role: HxTextRole.mono),
           const SizedBox(height: 4),
           HxText(pr.title, role: HxTextRole.body, maxLines: 2),
           const SizedBox(height: 6),
@@ -223,15 +240,11 @@ class _WorkerSheet extends StatelessWidget {
           HxText(worker.workerId, role: HxTextRole.title),
           const SizedBox(height: 8),
           HxText('Status: ${worker.column}', role: HxTextRole.body),
-          HxText(
-            'Liveness: ${worker.alive ? 'alive' : 'stopped'}',
-            role: HxTextRole.body,
-          ),
+          HxText('Liveness: ${worker.alive ? 'alive' : 'stopped'}',
+              role: HxTextRole.body),
           HxText('Blocker: ${worker.blocked ?? 'none'}', role: HxTextRole.body),
-          HxText(
-            'Completed: ${worker.completed ? 'yes' : 'no'}',
-            role: HxTextRole.body,
-          ),
+          HxText('Completed: ${worker.completed ? 'yes' : 'no'}',
+              role: HxTextRole.body),
         ],
       ),
     );

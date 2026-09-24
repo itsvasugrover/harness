@@ -29,7 +29,9 @@ class HxEventParser {
   int? _id;
 
   /// Parse one stream line; returns a frame on a dispatching blank line.
+  /// Tolerates CRLF wire endings (the trailing return never leaks).
   HxServerEvent? addLine(String line) {
+    if (line.endsWith('\r')) line = line.substring(0, line.length - 1);
     if (line.isEmpty) return dispatch();
     if (line.startsWith(':')) return null;
     final colon = line.indexOf(':');

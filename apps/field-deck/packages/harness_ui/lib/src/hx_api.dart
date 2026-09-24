@@ -5,6 +5,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'hx_events.dart';
+
 /// Phone-side contract gate: refuse hosts that report a newer contract.
 const int hxContract = 2;
 
@@ -210,6 +212,33 @@ class HxApi {
       throw const HxApiException(401, 'bearer rejected — re-pair in Settings');
     }
     throw HxApiException(res.statusCode, 'intent failed (${res.statusCode})');
+  }
+
+  /// Live event stream with cursor resume. Yields frames until the
+  /// connection drops; callers re-subscribe with the newest cursor.
+  /// Chunk-split lines reassemble through the carry buffer.
+  Stream<HxServerEvent> events({int cursor = 0}) async* {
+    final uri = Uri.parse('$baseUrl/api/v1/events?cursor=$cursor');
+    final req =
+        await _http.getUrl(uri).timeout(const Duration(seconds: 15));
+    if (bearer.isNotEmpty) {
+      req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
+    }
+    final res = await req.close().timeout(const Duration(seconds: 15));
+    if (res.statusCode != HttpStatus.ok) {
+      throw HxApiException(res.statusCode, 'events failed (${res.statusCode})');
+    }
+    final parser = HxEventParser()..cursor = cursor;
+    var carry = '';
+    await for (final chunk in res.transform(utf8.decoder)) {
+      carry += chunk;
+      final lines = carry.split('\n');
+      carry = lines.removeLast();
+      for (final line in lines) {
+        final frame = parser.track(parser.addLine(line));
+        if (frame != null) yield frame;
+      }
+    }
   }
 
   Future<List<HxAuditEvent>> audit({int limit = 50}) async {
