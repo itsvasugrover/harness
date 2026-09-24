@@ -4,7 +4,10 @@ mod board;
 mod checkpoint;
 mod config;
 mod doctor;
+#[allow(dead_code)] // run-path lease wiring consumes this in Phase 5.
+mod forge_exec;
 mod forge_facts;
+mod forge_ops;
 mod goal;
 mod keys;
 #[allow(dead_code)] // run loop passes MCP tools to workers next.
@@ -17,6 +20,8 @@ mod planner;
 mod resume;
 #[allow(dead_code)] // run.rs drives the loop; serve wires it in 3b-ii.
 mod run;
+#[allow(dead_code)] // help/loader serving lands with the deck API in Phase 5.
+mod skills;
 #[allow(dead_code)] // 3b run loop spawns workers per assignment.
 mod workers;
 
@@ -186,78 +191,9 @@ async fn main() -> Result<()> {
                 }
             }
             let app = model_switchboard::gateway::router(catalog).merge(api::router(state.clone()));
-            // Forge observer: one background task per watched repo mirrors
-            // PR/check/review facts the Kanban derives from. A missing
-            // token or unknown kind skips loudly but never fails boot.
-            if let Ok(forge_facts) = forge_facts::ForgeFacts::open(&format!(
-                "sqlite://{data_dir}/db/harness.db?create_if_missing=true"
-            ))
-            .await
-            {
-                for forge_cfg in &merged.forges {
-                    let env_refs: Vec<&str> = forge_cfg.env.iter().map(String::as_str).collect();
-                    let account = format!("forge-{}", forge_cfg.kind);
-                    let Some(token) = keys::resolve_all(None, &account, &env_refs) else {
-                        eprintln!("observer: no token for {}", forge_cfg.kind);
-                        continue;
-                    };
-                    let client: Option<Box<dyn forge_bridge::port::Forge + Send + Sync>> =
-                        match forge_cfg.kind.as_str() {
-                            "github" => {
-                                let base = if forge_cfg.base_url.is_empty() {
-                                    "https://api.github.com"
-                                } else {
-                                    &forge_cfg.base_url
-                                };
-                                forge_bridge::github::GitHub::new(base, &token)
-                                    .ok()
-                                    .map(|c| Box::new(c) as _)
-                            }
-                            "gitea" => {
-                                if forge_cfg.base_url.is_empty() {
-                                    eprintln!("observer: gitea needs base_url");
-                                    continue;
-                                }
-                                forge_bridge::gitea::Gitea::new(&forge_cfg.base_url, &token)
-                                    .ok()
-                                    .map(|c| Box::new(c) as _)
-                            }
-                            other => {
-                                eprintln!("observer: unknown forge kind {other}");
-                                continue;
-                            }
-                        };
-                    let Some(client) = client else { continue };
-                    let client = std::sync::Arc::new(client);
-                    for repo in forge_cfg.repos.clone() {
-                        let facts = forge_facts.clone();
-                        let task_client = client.clone();
-                        let interval = forge_cfg.interval();
-                        let mask = forge_bridge::mask::mask_secrets;
-                        tokio::spawn(async move {
-                            loop {
-                                match observer::poll_once(&**task_client, &repo, &facts).await {
-                                    Ok(items) => {
-                                        for f in items {
-                                            eprintln!(
-                                                "observer: {}#{} {}",
-                                                f.repo,
-                                                f.number,
-                                                mask(&f.reason)
-                                            );
-                                        }
-                                    }
-                                    Err(e) => eprintln!(
-                                        "observer: {repo} poll failed: {}",
-                                        mask(&e.to_string())
-                                    ),
-                                }
-                                tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
-                            }
-                        });
-                    }
-                }
-            }
+            // Forge observer: background tasks mirror PR facts the Kanban
+            // derives from. Idle without configured forges, never fails boot.
+            observer::spawn_forges(&merged.forges, &data_dir).await;
             let listener = tokio::net::TcpListener::bind(&bind).await?;
             match (lan_bind, lan_bearer) {
                 (Some(lan), Some(bearer)) if !bearer.is_empty() => {

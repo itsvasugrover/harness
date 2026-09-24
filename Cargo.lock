@@ -3383,8 +3383,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "context-press",
+ "forge-bridge",
  "noyalib",
  "serde",
+ "serde_json",
  "sha2 0.11.0",
  "sqlx",
  "tokio",

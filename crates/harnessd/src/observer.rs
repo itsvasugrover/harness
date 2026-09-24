@@ -100,6 +100,75 @@ pub async fn poll_once(
     Ok(follow_ups)
 }
 
+/// Spawn one background task per watched repo. A missing token or
+/// unknown kind skips loudly but never fails boot; empty config idles.
+pub async fn spawn_forges(cfgs: &[super::config::ForgeCfg], data_dir: &str) {
+    let Ok(facts) = super::forge_facts::ForgeFacts::open(&format!(
+        "sqlite://{data_dir}/db/harness.db?create_if_missing=true"
+    ))
+    .await
+    else {
+        return;
+    };
+    for forge_cfg in cfgs {
+        let env_refs: Vec<&str> = forge_cfg.env.iter().map(String::as_str).collect();
+        let account = format!("forge-{}", forge_cfg.kind);
+        let Some(token) = super::keys::resolve_all(None, &account, &env_refs) else {
+            eprintln!("observer: no token for {}", forge_cfg.kind);
+            continue;
+        };
+        let client: Option<Box<dyn forge_bridge::port::Forge + Send + Sync>> =
+            match forge_cfg.kind.as_str() {
+                "github" => {
+                    let base = if forge_cfg.base_url.is_empty() {
+                        "https://api.github.com"
+                    } else {
+                        &forge_cfg.base_url
+                    };
+                    forge_bridge::github::GitHub::new(base, &token)
+                        .ok()
+                        .map(|c| Box::new(c) as _)
+                }
+                "gitea" => {
+                    if forge_cfg.base_url.is_empty() {
+                        eprintln!("observer: gitea needs base_url");
+                        continue;
+                    }
+                    forge_bridge::gitea::Gitea::new(&forge_cfg.base_url, &token)
+                        .ok()
+                        .map(|c| Box::new(c) as _)
+                }
+                other => {
+                    eprintln!("observer: unknown forge kind {other}");
+                    continue;
+                }
+            };
+        let Some(client) = client else { continue };
+        let client = std::sync::Arc::new(client);
+        for repo in forge_cfg.repos.clone() {
+            let facts = facts.clone();
+            let task_client = client.clone();
+            let interval = forge_cfg.interval();
+            let mask = forge_bridge::mask::mask_secrets;
+            tokio::spawn(async move {
+                loop {
+                    match poll_once(&**task_client, &repo, &facts).await {
+                        Ok(items) => {
+                            for f in items {
+                                eprintln!("observer: {}#{} {}", f.repo, f.number, mask(&f.reason));
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("observer: {repo} poll failed: {}", mask(&e.to_string()))
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
+                }
+            });
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

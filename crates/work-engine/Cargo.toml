@@ -6,7 +6,9 @@ edition = "2021"
 [dependencies]
 anyhow = { workspace = true }
 context-press = { path = "../context-press" }
+forge-bridge = { path = "../forge-bridge" }
 serde = { workspace = true }
+serde_json = { workspace = true }
 noyalib = { workspace = true }
 sha2 = { workspace = true }
 sqlx = { workspace = true }

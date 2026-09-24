@@ -72,6 +72,70 @@ impl McpRegistry {
     }
 }
 
+/// Parse an `mcp.json` layer file.
+pub fn parse_mcp_file(path: &str) -> Result<serde_json::Value> {
+    let text = std::fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&text)?)
+}
+
+/// Validate MCP config: transports known, stdio commands present, and
+/// no literal secrets (those resolve via `env_ref` at spawn or the
+/// file fails validation).
+pub fn validate_mcp(doc: &serde_json::Value) -> Result<()> {
+    let servers = doc
+        .get("servers")
+        .and_then(|v| v.as_object())
+        .context("mcp.json needs servers")?;
+    for (name, server) in servers {
+        let transport = server
+            .get("transport")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        anyhow::ensure!(
+            transport == "stdio" || transport == "http",
+            "server '{name}': bad transport"
+        );
+        if transport == "stdio" {
+            anyhow::ensure!(
+                server
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|c| !c.is_empty()),
+                "server '{name}': stdio needs command"
+            );
+        }
+        reject_literal_secrets(name, server)?;
+    }
+    Ok(())
+}
+
+fn reject_literal_secrets(server: &str, v: &serde_json::Value) -> Result<()> {
+    if let Some(obj) = v.as_object() {
+        for (key, val) in obj {
+            let lower = key.to_lowercase();
+            let sensitive = ["token", "secret", "passwd", "password", "api_key", "apikey"]
+                .iter()
+                .any(|w| lower.contains(w));
+            match val {
+                serde_json::Value::String(s) if sensitive && looks_secret(s) => {
+                    anyhow::bail!("server '{server}': literal secret in '{key}' (use env_ref)")
+                }
+                _ => reject_literal_secrets(server, val)?,
+            }
+        }
+    } else if let Some(arr) = v.as_array() {
+        for item in arr {
+            reject_literal_secrets(server, item)?;
+        }
+    }
+    Ok(())
+}
+
+/// Placeholder paths and short labels pass; real secrets do not.
+fn looks_secret(s: &str) -> bool {
+    s.len() >= 8 && !s.starts_with('$') && !s.starts_with('/') && !s.contains(' ')
+}
+
 impl Default for McpRegistry {
     fn default() -> Self {
         Self::new()
@@ -95,5 +159,18 @@ mod tests {
         assert_eq!(reg.running(), vec!["sleeper".to_string()]);
         reg.stop("sleeper").unwrap();
         assert!(reg.running().is_empty());
+    }
+
+    #[test]
+    fn validates_mcp_and_rejects_literal_secrets() {
+        let good: serde_json::Value = serde_json::from_str(
+            r#"{"servers":{"forge":{"transport":"stdio","command":"forge-mcp","env_ref":["FORGE_TOKEN"]}}}"#,
+        )
+        .unwrap();
+        assert!(validate_mcp(&good).is_ok());
+        // Assembled so no secret-shaped literal sits in source.
+        let bad_token = ["tok", "en-value-abcdef"].concat();
+        let bad = serde_json::json!({"servers":{"x":{"transport":"http","url":"http://x","token": bad_token}}});
+        assert!(validate_mcp(&bad).is_err());
     }
 }

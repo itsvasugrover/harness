@@ -4,8 +4,10 @@ Status: layering model + frontmatter schema + the five hardening rules
 are specced and partly live (`SkillMeta` parse/gate, `CapabilityLease`,
 `NoteProposal`, audit kinds). The runtime loader — skill index build,
 trigger matching, `mcp.json` parsing/validation, command registry,
-`help` aggregation — is Phase 4. Anything below describing runtime
-behavior is the target shape.
+`help` aggregation — is live in `harnessd/src/skills.rs` and tested;
+per-session run-path wiring (which lease each worker gets) rides with
+the Phase 5 loop. Anything below describing runtime behavior beyond
+the loader is the target shape.
 
 One extensibility model across three primitives. Same shape in every
 layer; local shadows global on name collision; session flags win.
