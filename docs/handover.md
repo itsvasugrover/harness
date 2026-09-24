@@ -78,7 +78,9 @@ Built and green (`build`, `test`, `clippy -D warnings`, `fmt --check`,
 1. **Phase 5 (now):** run-path lease wiring (one lease per session
    into `builtins_with_forge`), Command Deck screens + Field Deck app
    over the live daemon API, merge-gate live inputs (facts +
-   approvals into `evaluate`).
+   approvals into `evaluate`), board API serving observer PR columns
+   (`pr_cards` + `column_for_pr` are ready; no endpoint exposes them
+   yet).
 2. Then roadmap Phase 6 (hardening); bets attach to their staging
    phase. `work-engine` `forge` tool and `DaemonForge` are ready and
    waiting on the lease wiring.

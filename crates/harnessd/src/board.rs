@@ -45,6 +45,21 @@ pub fn column(f: &CardFacts) -> Column {
     Column::Working
 }
 
+/// Column for a forge PR card (observer facts, no worker involved).
+/// Closed states rest in Done; anything needing a human lands in
+/// NeedsYou; the rest await review. Human approval still gates the
+/// merge itself via the Sentinel review gate, not this column.
+#[allow(dead_code)] // board API exposure consumes this in Phase 5.
+pub fn column_for_pr(card: &super::forge_facts::PrCard) -> Column {
+    if card.state != "open" {
+        return Column::Done;
+    }
+    if !card.checks_green || card.unresolved > 0 || !card.mergeable {
+        return Column::NeedsYou;
+    }
+    Column::InReview
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,5 +109,43 @@ mod tests {
             }),
             Column::Done
         );
+    }
+
+    fn pr(
+        number: i64,
+        state: &str,
+        mergeable: bool,
+        green: bool,
+        unresolved: i64,
+    ) -> crate::forge_facts::PrCard {
+        crate::forge_facts::PrCard {
+            number,
+            title: "t".into(),
+            state: state.into(),
+            mergeable,
+            checks_green: green,
+            unresolved,
+        }
+    }
+
+    #[test]
+    fn derives_pr_columns() {
+        assert_eq!(
+            column_for_pr(&pr(1, "open", true, true, 0)),
+            Column::InReview
+        );
+        assert_eq!(
+            column_for_pr(&pr(1, "open", true, false, 0)),
+            Column::NeedsYou
+        );
+        assert_eq!(
+            column_for_pr(&pr(1, "open", true, true, 2)),
+            Column::NeedsYou
+        );
+        assert_eq!(
+            column_for_pr(&pr(1, "open", false, true, 0)),
+            Column::NeedsYou
+        );
+        assert_eq!(column_for_pr(&pr(1, "merged", true, true, 0)), Column::Done);
     }
 }
