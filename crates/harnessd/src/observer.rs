@@ -104,7 +104,7 @@ pub async fn poll_once(
 /// unknown kind skips loudly but never fails boot; empty config idles.
 pub async fn spawn_forges(cfgs: &[super::config::ForgeCfg], data_dir: &str) {
     let Ok(facts) = super::forge_facts::ForgeFacts::open(&format!(
-        "sqlite://{data_dir}/db/harness.db?create_if_missing=true"
+        "sqlite://{data_dir}/db/harness.db?mode=rwc"
     ))
     .await
     else {

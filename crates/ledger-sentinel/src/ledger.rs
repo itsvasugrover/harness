@@ -6,19 +6,6 @@ use super::port::{chain_hash, Attribution, AuditEvent};
 use anyhow::Result;
 use sqlx::SqlitePool;
 
-const SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS audit_index(
-  seq INTEGER NOT NULL, id TEXT NOT NULL, time TEXT NOT NULL DEFAULT '',
-  actor TEXT NOT NULL DEFAULT '', repo TEXT NOT NULL DEFAULT '',
-  kind TEXT NOT NULL DEFAULT '', verdict TEXT NOT NULL DEFAULT '',
-  hash TEXT NOT NULL DEFAULT '',
-  summary TEXT NOT NULL DEFAULT '', agent TEXT NOT NULL DEFAULT '',
-  skill TEXT NOT NULL DEFAULT '', mcp_server TEXT NOT NULL DEFAULT '',
-  refs TEXT NOT NULL DEFAULT '[]',
-  PRIMARY KEY(seq)
-);
-CREATE INDEX IF NOT EXISTS idx_audit_filter ON audit_index(repo, kind, time);";
-
 /// Filter for audit reads. All fields optional; `limit` caps rows.
 #[derive(Debug, Clone, Default)]
 pub struct AuditFilter {
@@ -30,49 +17,31 @@ pub struct AuditFilter {
     pub limit: u64,
 }
 
-/// `ALTER TABLE ... ADD COLUMN` for DBs created before a column
-/// existed. Only the fixed known columns are ever added, so the
-/// statements stay static; duplicate-column errors mean "already there".
-async fn ensure_column(pool: &SqlitePool, col: &str) -> Result<()> {
-    let ddl: &'static str = match col {
-        "summary" => "ALTER TABLE audit_index ADD COLUMN summary TEXT NOT NULL DEFAULT ''",
-        "agent" => "ALTER TABLE audit_index ADD COLUMN agent TEXT NOT NULL DEFAULT ''",
-        "skill" => "ALTER TABLE audit_index ADD COLUMN skill TEXT NOT NULL DEFAULT ''",
-        "mcp_server" => "ALTER TABLE audit_index ADD COLUMN mcp_server TEXT NOT NULL DEFAULT ''",
-        "refs" => "ALTER TABLE audit_index ADD COLUMN refs TEXT NOT NULL DEFAULT '[]'",
-        _ => return Ok(()),
-    };
-    match sqlx::query(ddl).execute(pool).await {
-        Ok(_) => Ok(()),
-        Err(e) if e.to_string().contains("duplicate column name") => Ok(()),
-        Err(e) => Err(e.into()),
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Ledger {
     dir: std::path::PathBuf,
     pool: SqlitePool,
+    /// Serializes appends: seq claim, file write, and index insert
+    /// must not interleave or two writers fork the hash chain.
+    write: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
 impl Ledger {
     async fn init(dir: std::path::PathBuf, pool: SqlitePool) -> Result<Self> {
         std::fs::create_dir_all(&dir)?;
-        sqlx::query(SCHEMA).execute(&pool).await?;
-        // Existing DBs predate the detail columns: add what's missing.
-        for col in ["summary", "agent", "skill", "mcp_server", "refs"] {
-            ensure_column(&pool, col).await?;
-        }
-        Ok(Self { dir, pool })
+        super::ledger_schema::init_schema(&pool).await?;
+        Ok(Self {
+            dir,
+            pool,
+            write: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        })
     }
 
     /// Open a file-backed ledger under `<data_dir>/` (`audit/` + db).
     pub async fn open(data_dir: &str) -> Result<Self> {
         let dir = std::path::PathBuf::from(format!("{data_dir}/audit"));
-        let pool = SqlitePool::connect(&format!(
-            "sqlite://{data_dir}/db/harness.db?create_if_missing=true"
-        ))
-        .await?;
+        let pool =
+            SqlitePool::connect(&format!("sqlite://{data_dir}/db/harness.db?mode=rwc")).await?;
         Self::init(dir, pool).await
     }
 
@@ -98,6 +67,7 @@ impl Ledger {
         verdict: &str,
         refs: &[String],
     ) -> Result<AuditEvent> {
+        let _guard = self.write.lock().await;
         let (seq,): (i64,) = sqlx::query_as("SELECT COALESCE(MAX(seq), -1) + 1 FROM audit_index")
             .fetch_one(&self.pool)
             .await?;
@@ -285,5 +255,32 @@ mod tests {
             .unwrap();
         assert_eq!(one.len(), 1);
         assert_eq!(one[0].attribution.actor, "w2");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_appends_keep_unique_seqs() {
+        use std::sync::Arc;
+        // File DB: pooled :memory: connections would not share rows.
+        let dir = std::env::temp_dir().join("harness-audit-race-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("db")).unwrap();
+        let ledger = Arc::new(Ledger::open(dir.to_str().unwrap()).await.unwrap());
+        let mut tasks = vec![];
+        for i in 0..20 {
+            let ledger = ledger.clone();
+            tasks.push(tokio::spawn(async move {
+                ledger
+                    .append(attr(&format!("w{i}")), "o/r", "tool.exec", "x", "pass", &[])
+                    .await
+                    .unwrap()
+            }));
+        }
+        let mut seqs = vec![];
+        for task in tasks {
+            seqs.push(task.await.unwrap().seq);
+        }
+        seqs.sort_unstable();
+        seqs.dedup();
+        assert_eq!(seqs.len(), 20);
     }
 }

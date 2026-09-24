@@ -12,10 +12,7 @@ pub async fn run_goal(
     data_dir: &str,
 ) -> Result<()> {
     use work_engine::store::Store;
-    let store = Store::open(&format!(
-        "sqlite://{data_dir}/db/harness.db?create_if_missing=true"
-    ))
-    .await?;
+    let store = Store::open(&format!("sqlite://{data_dir}/db/harness.db?mode=rwc")).await?;
     let wt_root = format!("{data_dir}/work");
     let model_ref = model_switchboard::port::ModelRef::parse(&cfg.default_model)?;
     let prov = cfg
