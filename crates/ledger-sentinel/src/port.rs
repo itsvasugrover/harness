@@ -32,6 +32,9 @@ pub struct AuditEvent {
     pub kind: String,
     pub summary: String,
     pub verdict: String,
+    /// Refs like `pr:3`, `sha:abc`, `issue:7` for cross-linking.
+    #[serde(default)]
+    pub refs: Vec<String>,
     /// Hash of the previous event: tampering breaks the chain.
     pub hash_prev: String,
 }
@@ -54,7 +57,13 @@ impl AuditEvent {
             kind: kind.into(),
             summary: summary.into(),
             verdict: "pending".into(),
+            refs: vec![],
             hash_prev: hash_prev.into(),
         }
+    }
+
+    pub fn with_refs(mut self, refs: Vec<String>) -> Self {
+        self.refs = refs;
+        self
     }
 }

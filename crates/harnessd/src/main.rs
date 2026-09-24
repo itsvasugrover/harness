@@ -149,7 +149,12 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
-            let state = api::AppState::default();
+            let mut state = api::AppState::default();
+            // Audit ledger serves GET /api/v1/audit; a failed open
+            // serves [] rather than failing boot.
+            if let Ok(ledger) = ledger_sentinel::ledger::Ledger::open(&data_dir).await {
+                state.audit = Some(std::sync::Arc::new(tokio::sync::Mutex::new(ledger)));
+            }
             // Boot: board.json from finished runs wins; else derive
             // live facts from the resume scan of stored sessions.
             let boot_facts = goal::load_facts(&data_dir);
