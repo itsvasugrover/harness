@@ -1,0 +1,5 @@
+name: harness_ui
+description: Harness shared theme + widgets (zero third-party deps).
+version: 0.1.0
+environment: { sdk: ">=3.4.0 <4.0.0" }
+dependencies: { flutter: { sdk: flutter } }
