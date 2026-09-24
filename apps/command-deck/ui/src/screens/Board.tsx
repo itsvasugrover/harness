@@ -34,10 +34,13 @@ const COLUMN_TONE: Record<Column, string> = {
 
 const POLL_MS = 15_000;
 
+const CURSOR_KEY = "command-deck.cursor";
+
 function useBoard(cfg: ApiConfig) {
   const [board, setBoard] = useState<BoardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [live, setLive] = useState(false);
   const refresh = useCallback(async () => {
     try {
       setBoard(await getBoard(cfg));
@@ -49,10 +52,31 @@ function useBoard(cfg: ApiConfig) {
   }, [cfg.baseUrl, cfg.bearer]);
   useEffect(() => {
     void refresh();
-    const timer = setInterval(() => void refresh(), POLL_MS);
-    return () => clearInterval(timer);
-  }, [refresh]);
-  return { board, error, updatedAt, refresh };
+    // EventSource carries no Authorization header, so bearer-paired
+    // remotes stay on polling; loopback streams live with fallback.
+    if (cfg.bearer || typeof EventSource === "undefined") {
+      const timer = setInterval(() => void refresh(), POLL_MS);
+      return () => clearInterval(timer);
+    }
+    let timer: number | undefined;
+    const cursor = localStorage.getItem(CURSOR_KEY) ?? "0";
+    const es = new EventSource(`${cfg.baseUrl}/api/v1/events?cursor=${cursor}`);
+    es.onopen = () => setLive(true);
+    es.onmessage = (e) => {
+      if (e.lastEventId) localStorage.setItem(CURSOR_KEY, e.lastEventId);
+      void refresh();
+    };
+    es.onerror = () => {
+      es.close();
+      setLive(false);
+      timer = setInterval(() => void refresh(), POLL_MS);
+    };
+    return () => {
+      es.close();
+      if (timer !== undefined) clearInterval(timer);
+    };
+  }, [refresh, cfg.baseUrl, cfg.bearer]);
+  return { board, error, updatedAt, refresh, live };
 }
 
 function WorkerRow({ card, onOpen }: { card: WorkerCard; onOpen: () => void }) {
@@ -106,7 +130,7 @@ function PrRow({ card }: { card: PrCardView }) {
 }
 
 export function Board({ cfg }: { cfg: ApiConfig }) {
-  const { board, error, updatedAt, refresh } = useBoard(cfg);
+  const { board, error, updatedAt, refresh, live } = useBoard(cfg);
   const [openId, setOpenId] = useState<string | null>(null);
   const open = board?.workers.find((w) => w.worker_id === openId) ?? null;
 
@@ -116,6 +140,8 @@ export function Board({ cfg }: { cfg: ApiConfig }) {
         <h1 className="font-display text-2xl font-bold">Board</h1>
         <span className="text-xs text-faint">
           {updatedAt ? `updated ${updatedAt.toLocaleTimeString()}` : "connecting…"}
+          {" · "}
+          {live ? "live" : "15s poll"}
         </span>
         <span className="flex-1" />
         <Button variant="ghost" onClick={() => void refresh()} title="Refresh now">
