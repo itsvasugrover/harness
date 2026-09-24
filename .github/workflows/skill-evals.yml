@@ -1,0 +1,10 @@
+name: skill-evals
+on:
+  push: { paths: ["skills/**"] }
+  pull_request: { paths: ["skills/**"] }
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "skill golden evals runner lands with Bet 4 (v1 hardening)"

@@ -1,0 +1,14 @@
+/target/
+**/target/
+node_modules/
+build/
+.dart_tool/
+.flutter-plugins-dependencies
+.env
+*.log
+.serena/
+~/.harness/
+.harness/work/
+audit/
+*.orig
+*.rej

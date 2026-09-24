@@ -1,0 +1,50 @@
+# Copy to ~/.harness/config.yaml (global) or .harness/config.yaml (local).
+# Local shadows global per docs/skills-agents-mcp.md. Deny always wins.
+
+default_model: glm/glm-5
+small_model: deepseek/deepseek-chat
+
+# Every provider is config. Nothing is hardcoded: copy base_url + key
+# names from your provider's docs. Any OpenAI-compatible API works.
+providers:
+  glm:
+    base_url: https://YOUR-GLM-ENDPOINT/v1
+    env: [GLM_API_KEY]
+    models:
+      glm-5:
+        context: 200000
+        output: 8000
+        price_in: 0.0
+        price_out: 0.0
+  deepseek:
+    base_url: https://YOUR-DEEPSEEK-ENDPOINT/v1
+    env: [DEEPSEEK_API_KEY]
+    models:
+      deepseek-chat:
+        context: 128000
+        output: 8000
+        price_in: 0.0
+        price_out: 0.0
+  muse-spark:
+    base_url: https://YOUR-MUSE-SPARK-ENDPOINT/v1
+    env: [MUSE_SPARK_API_KEY]
+    models:
+      muse-spark-1:
+        context: 128000
+        output: 8000
+        price_in: 0.0
+        price_out: 0.0
+
+agents_dir: ./agents        # relative to the config file's layer dir
+skills_dir: ./skills
+commands_dir: ./commands
+mcp_file: ./mcp.json
+
+context_press: { enabled: true, min_block_words: 40 }
+shell_trim: { enabled: true, level: standard }
+relay: { port: 8787 }
+
+sentinel:
+  require_checks: true
+  require_human_approve: true
+  block_direct_main_push: true

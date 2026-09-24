@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "forge": {
+      "transport": "stdio",
+      "command": "forge-mcp",
+      "env_ref": ["FORGE_TOKEN"],
+      "agents": ["build", "plan"],
+      "tools": { "mode": "allowlist", "list": ["issue_*", "pr_*"] }
+    },
+    "recall": {
+      "transport": "http",
+      "url": "http://127.0.0.1:4317/mcp",
+      "agents": ["*"]
+    }
+  }
+}

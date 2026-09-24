@@ -1,0 +1,15 @@
+openapi: 3.1.0
+info: { title: Harness API, version: 0.1.0 }
+paths:
+  /api/v1/identity:
+    get:
+      summary: Opaque host id + contract version (only unauthenticated route).
+      responses: { '200': { description: identity } }
+  /api/v1/board:
+    get:
+      summary: Derived Kanban columns (never stored).
+      responses: { '200': { description: board } }
+  /v1/models:
+    get:
+      summary: OpenAI-compatible model catalog.
+      responses: { '200': { description: models } }
