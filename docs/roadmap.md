@@ -53,12 +53,13 @@ force-deleted, providers fully config-driven.
 Deck UI (Tauri board/worker detail/terminal, Flutter screens) is
 Phase 5 — the daemon API it needs is already live.
 
-## Phase 4 — Forge Bridge + Sentinel (weeks 7–8)
+## Phase 4 — Forge Bridge + Sentinel (done, weeks 7–8)
 
 GitHub + Gitea adapters, issue/PR/checks observer, merge gate, audit
 log + `GET /api/v1/audit`, CI triage/requirements workflows.
 Acceptance: open→review→green→approve→merge flow on both forges from
-the deck, every step in the ledger.
+the deck, every step in the ledger. Shipped as PRs #14–#17; run-path
+lease wiring and deck screens ride with Phase 5.
 
 ## Phase 5 — Decks: Command Deck UI + Field Deck (weeks 9–10)
 

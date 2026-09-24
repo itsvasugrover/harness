@@ -1,0 +1,30 @@
+name: pr-requirements
+on: { pull_request: { types: [opened, edited, synchronize] } }
+jobs:
+  requirements:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Title, body and branch check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          base=$(gh pr view "$NUMBER" --json baseRefName --jq .baseRefName)
+          head=$(gh pr view "$NUMBER" --json headRefName --jq .headRefName)
+          title=$(gh pr view "$NUMBER" --json title --jq .title)
+          body=$(gh pr view "$NUMBER" --json body --jq .body)
+          case "$head" in
+            feature/*|fix/*|agent/*|chore/*|docs/*|release/*|hotfix/*) ;;
+            *) echo "branch must be feature/|fix/|agent/|chore/|docs/|release/|hotfix/ (got $head)"; exit 1;;
+          esac
+          if [ "$base" != "develop" ]; then
+            case "$head" in release/*|hotfix/*) ;; *) echo "PRs target develop (got $base)"; exit 1;; esac
+          fi
+          echo "$title" | grep -Eq '^(feat|fix|docs|refactor|test|chore|perf|ci|build)\([a-z-]+(\|[a-z-]+)?\): .+' \
+            || { echo "title must follow type(scope): summary"; exit 1; }
+          for section in Problem Change Verification Risk; do
+            echo "$body" | grep -Eq "^.?${section}" \
+              || { echo "body misses section: $section"; exit 1; }
+          done

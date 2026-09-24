@@ -22,10 +22,11 @@ names (opencode, headroom, rtk, AO) for components.
 - Every code file ≤ 300 lines (CI `size-guard`); one job per file;
   cross-crate imports via `port.rs`/`lib.rs` only.
 
-## Repo state (as of Phase 3 daemon done)
+## Repo state (as of Phase 4 forge + sentinel done)
 
-Built and green (`build`, `test`, `clippy -D warnings`, `fmt --check`),
-plus live gateway smoke test (`/v1/models` → 200, chat → honest 501):
+Built and green (`build`, `test`, `clippy -D warnings`, `fmt --check`,
+`size-guard`, `secret-scan`, `api-drift`), CI enforced per PR
+(requirements + triage), history via reviewed PRs #1–#17:
 
 - `crates/work-engine`: `Tool` trait, `Registry`, `loop_turn` dispatch,  `skill.rs` (frontmatter + `min_engine` gate), bet stubs (`replay`,
   `retrieve`, `compaction_qa`), `tools/` one-file-per-tool (jailed,
@@ -42,9 +43,20 @@ plus live gateway smoke test (`/v1/models` → 200, chat → honest 501):
   Phase 2a–2d done.
 - `crates/shell-trim`: `trim` CLI (`run` filters + meter, `gain`
   ledger, `rewrite` hook helper, `discover` ranking).
-- `crates/forge-bridge`: `Forge` trait, `CapabilityLease` (scoped,
-  expiring; workers never hold PATs).
-- `crates/ledger-sentinel`: `AuditEvent` + `Attribution`, `jury.rs` stub.
+- `crates/forge-bridge`: `Forge` trait (+ `pulls` listing),
+  `CapabilityLease` (scoped, expiring; workers never hold PATs),
+  GitHub (REST + GraphQL threads) + Gitea adapters over shared
+  `http.rs`/`parse.rs`, secret masking, offline `Intent` queue with
+  replay + conflict surfacing.
+- `crates/ledger-sentinel`: `AuditEvent` + `Attribution` + refs,
+  `jury.rs`, JSONL + SQLite audit `ledger.rs`, merge `policy.rs` +
+  `review_gate.rs` (pass/warn/block).
+- `crates/harnessd`: previous daemon plus `forges:` config, observer
+  (`observer.rs` + `forge_facts.rs`: PR/check/thread facts,
+  follow-ups), audit ledger + `GET /api/v1/audit`, daemon forge
+  execution (`forge_exec.rs` + `forge_ops.rs`), extension loader
+  (`skills.rs`: skill index, triggers, `mcp.json` validation,
+  commands, agents, `help`; MCP config checks in `mcp.rs`).
 - `crates/recall-ledger`: `NoteProposal` + `NoteTarget` (global/local).
 - `crates/harnessd`: clap CLI (`version`, `serve`, `--dry-run`,
   `doctor`, `run`), `workers.rs` (branch+worktree, dirty refuses
@@ -63,10 +75,13 @@ plus live gateway smoke test (`/v1/models` → 200, chat → honest 501):
 
 ## Next work (in order)
 
-1. **Phase 4 (now):** GitHub + Gitea adapters, issue/PR/checks
-   observer, merge gate, audit log + `GET /api/v1/audit`.
-2. Then roadmap Phase 5 (decks) and 6 (hardening); bets attach to
-   their staging phase.
+1. **Phase 5 (now):** run-path lease wiring (one lease per session
+   into `builtins_with_forge`), Command Deck screens + Field Deck app
+   over the live daemon API, merge-gate live inputs (facts +
+   approvals into `evaluate`).
+2. Then roadmap Phase 6 (hardening); bets attach to their staging
+   phase. `work-engine` `forge` tool and `DaemonForge` are ready and
+   waiting on the lease wiring.
 
 ## How to work here
 
