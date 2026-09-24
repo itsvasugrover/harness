@@ -23,6 +23,22 @@ pub async fn run_goal(
     let key = super::keys::resolve_all(None, &model_ref.provider, &envs)
         .context("no key: set a provider env var or keychain entry")?;
     let mut set = tokio::task::JoinSet::new();
+    // One read-only lease per goal when the repo is watched: workers
+    // can read issues/PRs/checks through the `forge` tool. Writes stay
+    // ungranted until session permission scopes land (Phase 5).
+    let forge_exec = std::sync::Arc::new(super::forge_exec::DaemonForge::build(cfg));
+    let forge = cfg
+        .forges
+        .iter()
+        .find(|f| f.repos.iter().any(|r| r == repo))
+        .map(|f| super::run::ForgeScope {
+            lease: forge_bridge::port::CapabilityLease::mint(
+                &f.kind,
+                repo,
+                vec!["forge.read".into()],
+            ),
+            exec: forge_exec.clone(),
+        });
     for assignment in super::run::plan_goal(goal) {
         let ctx = Ctx {
             store: store.clone(),
@@ -34,6 +50,7 @@ pub async fn run_goal(
             key: key.clone(),
             model_name: model_ref.model.clone(),
             assignment,
+            forge: forge.clone(),
         };
         set.spawn(async move { run_assignment(ctx).await });
     }
@@ -74,6 +91,7 @@ struct Ctx {
     key: String,
     model_name: String,
     assignment: super::planner::Assignment,
+    forge: Option<super::run::ForgeScope>,
 }
 
 async fn run_assignment(ctx: Ctx) -> Result<(String, u32, bool, String)> {
@@ -98,6 +116,7 @@ async fn run_assignment(ctx: Ctx) -> Result<(String, u32, bool, String)> {
         agent: "build".into(),
         model: ctx.model.clone(),
         input_limit: 200_000,
+        forge: ctx.forge.clone(),
     };
     let mut driver = super::model::OpenAiDriver::new(
         &ctx.base_url,
@@ -108,7 +127,8 @@ async fn run_assignment(ctx: Ctx) -> Result<(String, u32, bool, String)> {
             ctx.assignment.unit_title, ctx.assignment.unit_scope
         ),
     );
-    let report = super::run::run_unit_async(&ctx.store, &run_cfg, &worker, &mut driver).await?;
+    let report =
+        super::run_async::run_unit_async(&ctx.store, &run_cfg, &worker, &mut driver).await?;
     let note = match super::workers::archive(&ctx.repo, &worker) {
         Ok(()) => String::new(),
         Err(e) => format!("dirty worktree kept at {}: {e}", worker.workdir),
@@ -165,6 +185,7 @@ mod tests {
                 agent: "build".into(),
                 model: "demo/m".into(),
                 input_limit: 200_000,
+                forge: None,
             };
             let driver = super::super::model::FakeModel::new(vec![vec![ChatEvent::ToolCall {
                 name: "read".into(),
@@ -175,8 +196,8 @@ mod tests {
         let (s1, c1, w1, mut d1) = mk("p1", dir.join("w1").to_str().unwrap());
         let (s2, c2, w2, mut d2) = mk("p2", dir.join("w2").to_str().unwrap());
         let mut set = tokio::task::JoinSet::new();
-        set.spawn(async move { crate::run::run_unit_async(&s1, &c1, &w1, &mut d1).await });
-        set.spawn(async move { crate::run::run_unit_async(&s2, &c2, &w2, &mut d2).await });
+        set.spawn(async move { crate::run_async::run_unit_async(&s1, &c1, &w1, &mut d1).await });
+        set.spawn(async move { crate::run_async::run_unit_async(&s2, &c2, &w2, &mut d2).await });
         let mut done = 0;
         while let Some(res) = set.join_next().await {
             assert_eq!(res.unwrap().unwrap().steps, 1);

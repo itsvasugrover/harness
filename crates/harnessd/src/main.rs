@@ -21,6 +21,7 @@ mod planner;
 mod resume;
 #[allow(dead_code)] // run.rs drives the loop; serve wires it in 3b-ii.
 mod run;
+mod run_async;
 #[allow(dead_code)] // help/loader serving lands with the deck API in Phase 5.
 mod skills;
 #[allow(dead_code)] // 3b run loop spawns workers per assignment.
