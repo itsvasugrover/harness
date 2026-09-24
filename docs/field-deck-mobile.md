@@ -6,7 +6,7 @@ Status: Phase 5b live. `harness_ui` ships the seed-color theme,
 ids. The `field_deck` app has all five tabs (board, worker, review
 inbox, audit, pairing settings) over the live API, and the queue
 replays approve/comment intents through POST /api/v1/intents via an
-explicit Sync action. Still pending: the retry-kind run-loop binding,
+explicit Sync action. A pure-Dart SSE parser ships with the kit; stream wiring lands with the SDK pass. Still pending: the retry-kind run-loop binding,
 SSE push, and the Flutter SDK verification pass
 (`flutter analyze/test` — no SDK in CI yet).
 

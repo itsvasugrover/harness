@@ -1,5 +1,6 @@
 // Harness UI kit barrel. Re-exports theme + widgets only.
 export 'src/hx_api.dart';
+export 'src/hx_events.dart';
 export 'src/hx_intents.dart';
 export 'src/hx_replay.dart';
 export 'src/hx_theme.dart';

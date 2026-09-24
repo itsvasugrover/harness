@@ -56,6 +56,17 @@ paths:
               schema: { $ref: '#/components/schemas/IntentResult' }
         '422': { description: kind not executable yet }
         '503': { description: replay unconfigured }
+  /api/v1/events:
+    get:
+      summary: Server-sent events with cursor replay (?cursor=N replays, then live).
+      parameters:
+        - { name: cursor, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200':
+          description: text/event-stream (id = sequence cursor)
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/BusEvent' }
   /v1/models:
     get:
       summary: OpenAI-compatible model catalog.
@@ -132,3 +143,11 @@ components:
         applied: { type: boolean }
         summary: { type: string }
         choices: { type: array, items: { type: string } }
+    BusEvent:
+      type: object
+      required: [seq, kind, summary, time]
+      properties:
+        seq: { type: integer }
+        kind: { type: string }
+        summary: { type: string }
+        time: { type: string, format: date-time }
