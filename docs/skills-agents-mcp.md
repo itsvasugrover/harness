@@ -5,8 +5,9 @@ are specced and partly live (`SkillMeta` parse/gate, `CapabilityLease`,
 `NoteProposal`, audit kinds). The runtime loader — skill index build,
 trigger matching, `mcp.json` parsing/validation, command registry,
 `help` aggregation — is live in `harnessd/src/skills.rs` and tested;
-per-session run-path wiring (which lease each worker gets) rides with
-the Phase 5 loop. Anything below describing runtime behavior beyond
+per-session run-path wiring: forge lease caps per session are live
+(5e, via `forges[].writes`); MCP/skill tool wiring rides with the
+Phase 5 loop. Anything below describing runtime behavior beyond
 the loader is the target shape.
 
 One extensibility model across three primitives. Same shape in every
