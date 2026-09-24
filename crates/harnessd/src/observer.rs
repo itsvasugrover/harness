@@ -1,0 +1,182 @@
+//! Forge observer: poll watched repos, mirror PR/check/review facts.
+//! One daemon task per watched repo at the configured cadence. Remote
+//! text is secret-masked before it lands in reasons or logs; tokens
+//! never leave the call site that resolved them.
+use super::forge_facts::ForgeFacts;
+use anyhow::Result;
+use forge_bridge::mask::mask_secrets;
+use forge_bridge::port::{Forge, Search};
+
+/// Structured follow-up for the owning worker: failed CI or open
+/// review threads, with the exact blocker named. Logs get trimmed
+/// downstream; full bodies stay recallable on the forge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FollowUp {
+    pub repo: String,
+    pub number: u64,
+    pub reason: String,
+}
+
+/// One poll of a single repo: discover open PRs, refresh their facts,
+/// and report what needs a human or worker. Pure against any `Forge`.
+pub async fn poll_once(
+    forge: &(dyn Forge + Sync),
+    repo: &str,
+    facts: &ForgeFacts,
+) -> Result<Vec<FollowUp>> {
+    let mut follow_ups = vec![];
+    let mut cursor: Option<String> = None;
+    loop {
+        let page = forge
+            .pulls(
+                repo,
+                &Search {
+                    query: String::new(),
+                    per_page: 50,
+                    cursor: cursor.clone(),
+                },
+            )
+            .await?;
+        for summary in &page.items {
+            facts
+                .upsert_pr(
+                    repo,
+                    summary.number as i64,
+                    &summary.title,
+                    "open",
+                    &summary.head_sha,
+                    false,
+                )
+                .await?;
+            let detail = forge.pull(repo, summary.number).await?;
+            facts
+                .upsert_pr(
+                    repo,
+                    detail.number as i64,
+                    &detail.title,
+                    &detail.state,
+                    &detail.head_sha,
+                    detail.mergeable,
+                )
+                .await?;
+            let checks: Vec<(String, String, String)> = detail
+                .checks
+                .iter()
+                .map(|c| (c.name.clone(), c.status.clone(), c.conclusion.clone()))
+                .collect();
+            facts
+                .replace_checks(repo, &detail.head_sha, &checks)
+                .await?;
+            let threads: Vec<(String, bool)> = detail
+                .threads
+                .iter()
+                .map(|t| (t.id.clone(), t.resolved))
+                .collect();
+            facts
+                .replace_threads(repo, detail.number as i64, &threads)
+                .await?;
+            let failed = facts.failing_checks(repo, &detail.head_sha).await?;
+            if !failed.is_empty() {
+                follow_ups.push(FollowUp {
+                    repo: repo.into(),
+                    number: detail.number,
+                    reason: mask_secrets(&format!("failed checks: {}", failed.join(", "))),
+                });
+            }
+            let open = facts.unresolved_threads(repo, detail.number as i64).await?;
+            if open > 0 {
+                follow_ups.push(FollowUp {
+                    repo: repo.into(),
+                    number: detail.number,
+                    reason: format!("{open} unresolved review threads"),
+                });
+            }
+        }
+        cursor = page.next;
+        if cursor.is_none() {
+            break;
+        }
+    }
+    Ok(follow_ups)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use forge_bridge::port::*;
+
+    struct FakeForge;
+    #[async_trait]
+    impl Forge for FakeForge {
+        fn name(&self) -> &'static str {
+            "fake"
+        }
+        async fn repos(&self, _q: &Search) -> anyhow::Result<Page<Repo>> {
+            Ok(Page::default())
+        }
+        async fn issues(&self, _r: &str, _q: &Search) -> anyhow::Result<Page<Issue>> {
+            Ok(Page::default())
+        }
+        async fn issue_detail(&self, _r: &str, _n: u64) -> anyhow::Result<IssueFull> {
+            Ok(IssueFull::default())
+        }
+        async fn open_issue(&self, _r: &str, _i: &NewIssue) -> anyhow::Result<Issue> {
+            Ok(Issue::default())
+        }
+        async fn comment(&self, _r: &str, _n: u64, _b: &str) -> anyhow::Result<Comment> {
+            Ok(Comment::default())
+        }
+        async fn pulls(&self, _r: &str, _q: &Search) -> anyhow::Result<Page<PullSummary>> {
+            Ok(Page {
+                items: vec![PullSummary {
+                    number: 7,
+                    title: "fix".into(),
+                    state: "open".into(),
+                    head_sha: "abc".into(),
+                }],
+                next: None,
+            })
+        }
+        async fn pull(&self, _r: &str, _n: u64) -> anyhow::Result<PullFull> {
+            Ok(PullFull {
+                number: 7,
+                title: "fix".into(),
+                state: "open".into(),
+                head_sha: "abc".into(),
+                mergeable: true,
+                checks: vec![Check {
+                    name: "ci".into(),
+                    status: "completed".into(),
+                    conclusion: "failure".into(),
+                }],
+                threads: vec![ReviewThread {
+                    id: "t1".into(),
+                    resolved: false,
+                    comments: vec![],
+                }],
+            })
+        }
+        async fn open_pull(&self, _r: &str, _p: &NewPull) -> anyhow::Result<PullFull> {
+            Ok(PullFull::default())
+        }
+        async fn merge(&self, _r: &str, _n: u64, _m: &str) -> anyhow::Result<MergeReport> {
+            Ok(MergeReport::default())
+        }
+        async fn checks(&self, _r: &str, _s: &str) -> anyhow::Result<Vec<Check>> {
+            Ok(vec![])
+        }
+        async fn request_review(&self, _r: &str, _n: u64, _v: &[String]) -> anyhow::Result<Review> {
+            Ok(Review::default())
+        }
+    }
+
+    #[tokio::test]
+    async fn poll_routes_failures_and_threads() {
+        let facts = ForgeFacts::open("sqlite::memory:").await.unwrap();
+        let follow_ups = poll_once(&FakeForge, "o/r", &facts).await.unwrap();
+        assert_eq!(follow_ups.len(), 2);
+        assert!(follow_ups[0].reason.starts_with("failed checks: ci"));
+        assert_eq!(facts.unresolved_threads("o/r", 7).await.unwrap(), 1);
+    }
+}

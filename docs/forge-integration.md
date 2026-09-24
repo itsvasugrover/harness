@@ -3,8 +3,12 @@
 Status: `Forge` trait, `CapabilityLease`, offline `Intent` queue,
 GitHub + Gitea adapters (`github.rs`, `gitea.rs` over shared
 `http.rs`/`parse.rs`), and secret masking (`mask.rs`) are live and
-tested. The observer, merge gate, and replay-conflict wiring are
-next — anything below describing them is still the target shape.
+tested. The daemon observer (`harnessd/src/observer.rs`) polls watched
+repos on the configured cadence into `pr_facts`/`check_facts`/
+`review_facts` SQLite tables (`forge_facts.rs`) and routes failed
+checks and unresolved threads back as structured follow-ups. Merge
+gate and replay-conflict wiring are next — anything below describing
+them is still the target shape.
 
 One trait, two adapters. The agent and both decks never touch
 provider SDKs directly.

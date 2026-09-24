@@ -1077,6 +1077,7 @@ dependencies = [
  "noyalib",
  "serde",
  "serde_json",
+ "sqlx",
  "tokio",
  "uuid",
  "work-engine",

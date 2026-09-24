@@ -2,7 +2,7 @@
 //! Gitea agree on the JSON we read (`number/title/state`, `labels[].name`,
 //! `user.login`, `head.sha`), so one parser set serves both; only the
 //! request paths and envelopes differ per forge.
-use super::port::{Check, Comment, Issue, PullFull, Repo, ReviewThread};
+use super::port::{Check, Comment, Issue, PullFull, PullSummary, Repo, ReviewThread};
 
 pub fn str(v: &serde_json::Value, key: &str) -> String {
     v.get(key).and_then(|x| x.as_str()).unwrap_or("").into()
@@ -77,6 +77,38 @@ pub fn parse_pull(v: &serde_json::Value) -> PullFull {
     }
 }
 
+pub fn parse_summary(v: &serde_json::Value) -> PullSummary {
+    PullSummary {
+        number: v.get("number").and_then(|x| x.as_u64()).unwrap_or(0),
+        title: str(v, "title"),
+        state: str(v, "state"),
+        head_sha: v
+            .pointer("/head/sha")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .into(),
+    }
+}
+
+/// Gitea has no thread object: each pull review is one thread,
+/// resolved when the review approved.
+pub fn parse_gitea_review(v: &serde_json::Value) -> ReviewThread {
+    let state = v.get("state").and_then(|x| x.as_str()).unwrap_or("");
+    ReviewThread {
+        id: v.get("id").map(|x| x.to_string()).unwrap_or_default(),
+        resolved: state == "APPROVED",
+        comments: vec![Comment {
+            id: v.get("id").map(|x| x.to_string()).unwrap_or_default(),
+            author: v
+                .pointer("/user/login")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .into(),
+            body: str(v, "body"),
+        }],
+    }
+}
+
 pub fn parse_thread(v: &serde_json::Value) -> ReviewThread {
     let comments = v
         .pointer("/comments/nodes")
@@ -143,5 +175,19 @@ mod tests {
         .unwrap();
         let t = parse_thread(&v);
         assert!(!t.resolved && t.comments.len() == 1);
+    }
+
+    #[test]
+    fn parses_summary_and_gitea_review() {
+        let s: serde_json::Value =
+            serde_json::from_str(r#"{"number":9,"title":"w","state":"open","head":{"sha":"d"}}"#)
+                .unwrap();
+        assert_eq!(parse_summary(&s).head_sha, "d");
+        let r: serde_json::Value = serde_json::from_str(
+            r#"{"id":2,"state":"APPROVED","body":"lgtm","user":{"login":"rev"}}"#,
+        )
+        .unwrap();
+        let t = parse_gitea_review(&r);
+        assert!(t.resolved && t.comments.len() == 1);
     }
 }
