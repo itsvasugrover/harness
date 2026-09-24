@@ -67,3 +67,24 @@ impl AuditEvent {
         self
     }
 }
+
+/// Chain link: hex sha256 over the canonical fields plus `hash_prev`.
+/// Lives here with the event shape so writers and verifiers share it.
+pub fn chain_hash(event: &AuditEvent) -> String {
+    use sha2::{Digest, Sha256};
+    let canon = format!(
+        "{}|{}|{}|{}|{}|{}|{}|{}",
+        event.seq,
+        event.time.to_rfc3339(),
+        event.attribution.actor,
+        event.attribution.agent,
+        event.repo,
+        event.kind,
+        event.summary,
+        event.hash_prev
+    );
+    Sha256::digest(canon.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
