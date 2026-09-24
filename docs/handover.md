@@ -28,12 +28,15 @@ Built and green (`build`, `test`, `clippy -D warnings`, `fmt --check`,
 `size-guard`, `secret-scan`, `api-drift`), CI enforced per PR
 (requirements + triage), history via reviewed PRs #1–#17:
 
-- `crates/work-engine`: `Tool` trait, `Registry`, `loop_turn` dispatch,  `skill.rs` (frontmatter + `min_engine` gate), bet stubs (`replay`,
+- `crates/work-engine`: `Tool` trait, `Registry`, `loop_turn` dispatch
+  + `GuardedTurn` (permission gate + doom-loop guard, tested),
+  `skill.rs` (frontmatter + `min_engine` gate), bet stubs (`replay`,
   `retrieve`, `compaction_qa`), `tools/` one-file-per-tool (jailed,
-  tested),   `session.rs`/`store.rs` (sqlx SQLite), `processor.rs`
-  (event fold), `overflow.rs` (Ok/CompactSoon/Overflow + 40% soft cap),
-  `compaction.rs` (select), `task.rs` (fan-out split), `approvals.rs`,
-  `handover.rs` (successor delegation), `loop_turn.rs` (`gate()`).
+  tested: + `task`, `skill`, `todo`, `webfetch`), `session.rs`/`store.rs`
+  (sqlx SQLite), `processor.rs` (event fold), `overflow.rs`
+  (Ok/CompactSoon/Overflow + 40% soft cap), `compaction.rs` (select),
+  `task.rs` (fan-out split), `approvals.rs`, `handover.rs` (successor
+  delegation), `loop_turn.rs` (`gate()`).
 - `crates/model-switchboard`: `ModelRef` parse, `catalog.rs` (fetch +
   overlay), `gateway.rs` (resolve + `route_model` + `UsageSink`),
   `budget.rs`, `ledger.rs` (Spend) stubs.
@@ -61,9 +64,12 @@ Built and green (`build`, `test`, `clippy -D warnings`, `fmt --check`,
 - `crates/harnessd`: clap CLI (`version`, `serve`, `--dry-run`,
   `doctor`, `run`), `workers.rs` (branch+worktree, dirty refuses
   archive), `checkpoint.rs` (snapshot/revert), `planner.rs`,
-  `board.rs` (derived columns), `api.rs` (identity live, bearer
-  gate, served board seeded by boot resume), `run.rs` (sync + async
-  loops, per-turn usage), `model.rs`, `keys.rs`, `mcp.rs`
+  `board.rs` (derived columns incl. `column_for_pr`), `api.rs`
+  (persistent host_id, bearer gate, unified `{workers, prs}` board,
+  contract v2, RwLock facts), `forge_gate.rs` (live merge gate over
+  PR facts + `approved` flag), `observer.rs` (bounded concurrent repo
+  polls), `run.rs` (sync + async loops, per-turn usage, guarded
+  dispatch), `model.rs`, `keys.rs`, `mcp.rs`
   (spawn/supervise/stop + call attribution), `config.rs` (layers +
   models.dev base, zero hardcoded URLs), `doctor.rs`, `resume.rs`.
 - `skills/`: `forge-ops`, `failure-notes`, `review-gate` + eval stub.
@@ -71,16 +77,17 @@ Built and green (`build`, `test`, `clippy -D warnings`, `fmt --check`,
   stubs (SDKs not resolved in this checkout — run `flutter pub get`).
 - `docs/`: 14 files (index in `docs/README.md`), `config.example.yaml`,
   `mcp.example.json`, CI (`ci.yml`, `secret-scan.yml`, `skill-evals.yml`),
-  `scripts/size-guard.sh`, `openapi/openapi.yaml` stub.
+  `scripts/size-guard.sh`, `openapi/openapi.yaml` v0.2.0 (unified
+  board + identity + audit schemas).
 
 ## Next work (in order)
 
-1. **Phase 5 (now):** run-path lease wiring (one lease per session
-   into `builtins_with_forge`), Command Deck screens + Field Deck app
-   over the live daemon API, merge-gate live inputs (facts +
-   approvals into `evaluate`), board API serving observer PR columns
-   (`pr_cards` + `column_for_pr` are ready; no endpoint exposes them
-   yet).
+1. **Phase 5 (now):** session write scopes (writes stay ungranted
+    past `forge.read` until approval scopes land), Command Deck
+    screens + Field Deck app over the live daemon API (unified board
+    + persistent identity + merge gate with `approved` flag are live;
+    still missing: per-repo tags on PR cards, SSE push, generated
+    TS/Dart clients, all screens).
 2. Then roadmap Phase 6 (hardening); bets attach to their staging
    phase. `work-engine` `forge` tool and `DaemonForge` are ready and
    waiting on the lease wiring.

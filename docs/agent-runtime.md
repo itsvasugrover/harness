@@ -6,16 +6,17 @@ repeat with compaction), reimplemented in Rust with our module limits.
 
 ## Implementation status (Phase 2 done — honest snapshot)
 
-Real and tested: `Tool` trait + `Registry` + 7 tools (`read`, `write`,
-`edit`, `bash`, `glob`, `grep`, `recall`), workdir jail, `gate()`
-soft-cap delegation, handover export, task fan-out with depth cap,
-approvals ledger-shape, SQLite sessions/messages/usage, event fold,
-overflow levels, compaction select + QA probe, skill frontmatter gate,
-`recall` store.
-Deferred with owner phase: live model streaming + permission prompts +
-doom-loop guard (Phase 3 loop), `task/skill/todo/webfetch` tools
-(Phase 5), summarizer that writes compacted notes (Phase 3),
-MCP-owned tool servers (Phase 4 loader live, run wiring pending).
+Real and tested: `Tool` trait + `Registry` + 11 tools (`read`, `write`,
+`edit`, `bash`, `glob`, `grep`, `recall`, `task`, `skill`, `todo`,
+`webfetch`), workdir jail, `gate()` soft-cap delegation, `GuardedTurn`
+(permission gate + doom-loop guard), handover export, task fan-out
+with depth cap, approvals ledger-shape, SQLite sessions/messages/usage,
+event fold, overflow levels, compaction select + QA probe, skill
+frontmatter gate, `recall` store.
+Deferred with owner phase: live model streaming + summarizer that
+writes compacted notes (Phase 3 loop), snapshot-per-first-write-tool +
+summary mode, MCP-owned tool servers (Phase 4 loader live, run wiring
+pending).
 The `forge` tool is live (lease-checked, read-only leases in the run
 loop). Anything below describing the rest as live is the target
 shape, not today's code.
@@ -48,9 +49,11 @@ Files: `loop.rs`, `prompt.rs`, `processor.rs`, `compaction.rs`,
 - Doom-loop guard: same tool+args 3× → stop with explanation.
 - Summary mode: no tools while writing the final summary.
 - Tool errors return as tool results (model self-corrects), not panics.
-- Live today: the last rule only. Approvals pause shape exists
-  (`approvals.rs`); permission prompts, snapshots-per-tool,
-  doom-loop, and summary mode arrive with the Phase 3 loop.
+- Live today: tool errors as results, the approval gate
+  (`needs_approval` + `GuardedTurn`, writes/egress pause without a
+  session preapproval), and the doom-loop guard (same tool+args 3×
+  stops). Approvals pause shape exists (`approvals.rs`);
+  snapshots-per-tool and summary mode arrive with the Phase 3 loop.
 
 ## Tool registry
 
@@ -62,7 +65,10 @@ Tool = `{ id, description, schema, execute(ctx) → {title, output, files?} }`.
 | `bash` | Cwd jail + 30s kill-timeout; Trim routing is Phase 4 |
 | `glob`, `grep` | Grouped, truncated; full hits recallable |
 | `recall` | File-backed restore with TTL |
-| `task`, `skill`, `todo`, `webfetch` | Phase 5 tools (spec in `skills-agents-mcp.md`) |
+| `task` | Goal fan-out via `split_goal` (`{goal, max_units?}`) |
+| `skill` | Progressive-disclosure lookup (`list/match/load`, bundled fallback) |
+| `todo` | Session-local list (`add/list/done`, file-backed) |
+| `webfetch` | URL/file fetch, 1 MiB cap, SSRF-safe; network needs approval |
 | `forge` | Live: lease-checked reads via `builtins_with_forge` (writes await session scopes) |
 
 Invalid args → machine-readable error fed back to the model, never a crash.

@@ -1,19 +1,96 @@
 openapi: 3.1.0
-info: { title: Harness API, version: 0.1.0 }
+info: { title: Harness API, version: 0.2.0, description: 'Contract v2: unified board {workers, prs} + persistent host_id.' }
 paths:
   /api/v1/identity:
     get:
-      summary: Opaque host id + contract version (only unauthenticated route).
-      responses: { '200': { description: identity } }
+      summary: Opaque stable host id + contract version (only unauthenticated route).
+      responses:
+        '200':
+          description: identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Identity' }
   /api/v1/board:
     get:
-      summary: Derived Kanban columns (never stored).
-      responses: { '200': { description: board } }
+      summary: Derived Kanban (workers + PRs, never stored). Poll <= every 15s; SSE with resume cursor lands in Phase 5.
+      responses:
+        '200':
+          description: board
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Board' }
   /api/v1/audit:
     get:
       summary: Append-only audit log with filters (actor, repo, kind, time).
-      responses: { '200': { description: audit } }
+      parameters:
+        - { name: actor, in: query, schema: { type: string } }
+        - { name: repo, in: query, schema: { type: string } }
+        - { name: kind, in: query, schema: { type: string } }
+        - { name: since, in: query, schema: { type: string } }
+        - { name: until, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 100 } }
+      responses:
+        '200':
+          description: audit
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/AuditEvent' } }
   /v1/models:
     get:
       summary: OpenAI-compatible model catalog.
       responses: { '200': { description: models } }
+  /v1/chat/completions:
+    post:
+      summary: Gateway chat (501 until provider adapters land; decision + UsageSink live).
+      responses: { '501': { description: not implemented } }
+components:
+  schemas:
+    Identity:
+      type: object
+      required: [host_id, contract]
+      properties:
+        host_id: { type: string, description: 'Stable per-machine id from <data_dir>/host_id' }
+        contract: { type: integer, example: 2 }
+    Column:
+      type: string
+      enum: [working, needs_you, in_review, ready_to_merge, done]
+    WorkerCard:
+      type: object
+      required: [worker_id, column, alive, completed]
+      properties:
+        worker_id: { type: string }
+        column: { $ref: '#/components/schemas/Column' }
+        alive: { type: boolean }
+        blocked: { type: string, nullable: true }
+        completed: { type: boolean }
+    PrCardView:
+      type: object
+      required: [number, title, state, column, checks_green, unresolved, mergeable]
+      properties:
+        repo: { type: string }
+        number: { type: integer }
+        title: { type: string }
+        state: { type: string }
+        column: { $ref: '#/components/schemas/Column' }
+        checks_green: { type: boolean }
+        unresolved: { type: integer }
+        mergeable: { type: boolean }
+    Board:
+      type: object
+      required: [workers, prs]
+      properties:
+        workers: { type: array, items: { $ref: '#/components/schemas/WorkerCard' } }
+        prs: { type: array, items: { $ref: '#/components/schemas/PrCardView' } }
+    AuditEvent:
+      type: object
+      required: [id, seq, time, actor, repo, kind, summary, hash]
+      properties:
+        id: { type: string, format: uuid }
+        seq: { type: integer }
+        time: { type: string, format: date-time }
+        actor: { type: string }
+        repo: { type: string }
+        kind: { type: string }
+        summary: { type: string }
+        verdict: { type: string }
+        hash: { type: string }
