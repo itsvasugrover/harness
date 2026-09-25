@@ -9,7 +9,13 @@ import 'package:harness_ui/harness_ui.dart';
 
 import '../session.dart' show loadCursor, saveCursor;
 
-const _columns = ['working', 'needs_you', 'in_review', 'ready_to_merge', 'done'];
+const _columns = [
+  'working',
+  'needs_you',
+  'in_review',
+  'ready_to_merge',
+  'done'
+];
 
 String _label(String column) => switch (column) {
       'working' => 'Working',
@@ -126,8 +132,14 @@ class _HxBoardScreenState extends State<HxBoardScreen> {
           for (final col in _columns)
             _Column(
               title: _label(col),
-              workers: [for (final w in board.workers) if (w.column == col) w],
-              prs: [for (final p in board.prs) if (p.column == col) p],
+              workers: [
+                for (final w in board.workers)
+                  if (w.column == col) w
+              ],
+              prs: [
+                for (final p in board.prs)
+                  if (p.column == col) p
+              ],
             ),
         ],
       ),
@@ -139,7 +151,8 @@ class _Column extends StatelessWidget {
   final String title;
   final List<HxWorkerCard> workers;
   final List<HxPrCard> prs;
-  const _Column({required this.title, required this.workers, required this.prs});
+  const _Column(
+      {required this.title, required this.workers, required this.prs});
 
   @override
   Widget build(BuildContext context) {

@@ -48,9 +48,9 @@ class HxText extends StatelessWidget {
       HxTextRole.body => theme.bodyMedium,
       HxTextRole.caption => theme.bodySmall?.copyWith(color: muted),
       HxTextRole.mono => theme.bodySmall?.copyWith(
-        fontFamily: 'monospace',
-        color: muted,
-      ),
+          fontFamily: 'monospace',
+          color: muted,
+        ),
     };
     return Text(
       data,
@@ -69,7 +69,6 @@ class HxBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onTone = Theme.of(context).colorScheme.surface;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
@@ -90,10 +89,10 @@ class HxBadge extends StatelessWidget {
     final color = lower == 'pass'
         ? hx.success
         : lower == 'warn'
-        ? hx.warning
-        : lower == 'block'
-        ? hx.error
-        : hx.muted;
+            ? hx.warning
+            : lower == 'block'
+                ? hx.error
+                : hx.muted;
     return HxBadge(label: verdict.isEmpty ? 'pending' : verdict, color: color);
   }
 }

@@ -17,9 +17,9 @@ class HxIdentity {
   const HxIdentity({required this.hostId, required this.contract});
 
   factory HxIdentity.fromJson(Map<String, dynamic> json) => HxIdentity(
-    hostId: json['host_id'] as String? ?? '',
-    contract: (json['contract'] as num? ?? 0).toInt(),
-  );
+        hostId: json['host_id'] as String? ?? '',
+        contract: (json['contract'] as num? ?? 0).toInt(),
+      );
 }
 
 /// One derived board: worker cards plus observer PR cards.
@@ -29,9 +29,9 @@ class HxBoard {
   const HxBoard({required this.workers, required this.prs});
 
   factory HxBoard.fromJson(Map<String, dynamic> json) => HxBoard(
-    workers: _list(json['workers'], HxWorkerCard.fromJson),
-    prs: _list(json['prs'], HxPrCard.fromJson),
-  );
+        workers: _list(json['workers'], HxWorkerCard.fromJson),
+        prs: _list(json['prs'], HxPrCard.fromJson),
+      );
 
   static List<T> _list<T>(dynamic raw, T Function(Map<String, dynamic>) parse) {
     if (raw is! List) return const [];
@@ -57,12 +57,12 @@ class HxWorkerCard {
   });
 
   factory HxWorkerCard.fromJson(Map<String, dynamic> json) => HxWorkerCard(
-    workerId: json['worker_id'] as String? ?? '',
-    column: json['column'] as String? ?? 'needs_you',
-    alive: json['alive'] as bool? ?? false,
-    blocked: json['blocked'] as String?,
-    completed: json['completed'] as bool? ?? false,
-  );
+        workerId: json['worker_id'] as String? ?? '',
+        column: json['column'] as String? ?? 'needs_you',
+        alive: json['alive'] as bool? ?? false,
+        blocked: json['blocked'] as String?,
+        completed: json['completed'] as bool? ?? false,
+      );
 }
 
 class HxPrCard {
@@ -86,15 +86,15 @@ class HxPrCard {
   });
 
   factory HxPrCard.fromJson(Map<String, dynamic> json) => HxPrCard(
-    repo: json['repo'] as String? ?? '',
-    number: (json['number'] as num? ?? 0).toInt(),
-    title: json['title'] as String? ?? '',
-    state: json['state'] as String? ?? '',
-    column: json['column'] as String? ?? 'needs_you',
-    checksGreen: json['checks_green'] as bool? ?? false,
-    unresolved: (json['unresolved'] as num? ?? 0).toInt(),
-    mergeable: json['mergeable'] as bool? ?? false,
-  );
+        repo: json['repo'] as String? ?? '',
+        number: (json['number'] as num? ?? 0).toInt(),
+        title: json['title'] as String? ?? '',
+        state: json['state'] as String? ?? '',
+        column: json['column'] as String? ?? 'needs_you',
+        checksGreen: json['checks_green'] as bool? ?? false,
+        unresolved: (json['unresolved'] as num? ?? 0).toInt(),
+        mergeable: json['mergeable'] as bool? ?? false,
+      );
 }
 
 class HxAuditEvent {
@@ -219,8 +219,7 @@ class HxApi {
   /// Chunk-split lines reassemble through the carry buffer.
   Stream<HxServerEvent> events({int cursor = 0}) async* {
     final uri = Uri.parse('$baseUrl/api/v1/events?cursor=$cursor');
-    final req =
-        await _http.getUrl(uri).timeout(const Duration(seconds: 15));
+    final req = await _http.getUrl(uri).timeout(const Duration(seconds: 15));
     if (bearer.isNotEmpty) {
       req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
     }
