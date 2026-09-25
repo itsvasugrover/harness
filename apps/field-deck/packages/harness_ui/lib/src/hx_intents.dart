@@ -43,32 +43,31 @@ class HxIntent {
   }
 
   Map<String, dynamic> toJson() => {
-    'idempotency_id': idempotencyId,
-    'kind': kind.name,
-    'repo': repo,
-    'number': number,
-    'body': body,
-    'created_at': createdAt.toIso8601String(),
-    'conflict': conflict.name,
-  };
+        'idempotency_id': idempotencyId,
+        'kind': kind.name,
+        'repo': repo,
+        'number': number,
+        'body': body,
+        'created_at': createdAt.toIso8601String(),
+        'conflict': conflict.name,
+      };
 
   factory HxIntent.fromJson(Map<String, dynamic> json) => HxIntent(
-    idempotencyId: json['idempotency_id'] as String? ?? '',
-    kind: HxIntentKind.values.firstWhere(
-      (k) => k.name == json['kind'],
-      orElse: () => HxIntentKind.comment,
-    ),
-    repo: json['repo'] as String? ?? '',
-    number: (json['number'] as num? ?? 0).toInt(),
-    body: json['body'] as String? ?? '',
-    createdAt:
-        DateTime.tryParse(json['created_at'] as String? ?? '') ??
-        DateTime.fromMillisecondsSinceEpoch(0),
-    conflict: HxConflict.values.firstWhere(
-      (c) => c.name == json['conflict'],
-      orElse: () => HxConflict.none,
-    ),
-  );
+        idempotencyId: json['idempotency_id'] as String? ?? '',
+        kind: HxIntentKind.values.firstWhere(
+          (k) => k.name == json['kind'],
+          orElse: () => HxIntentKind.comment,
+        ),
+        repo: json['repo'] as String? ?? '',
+        number: (json['number'] as num? ?? 0).toInt(),
+        body: json['body'] as String? ?? '',
+        createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+        conflict: HxConflict.values.firstWhere(
+          (c) => c.name == json['conflict'],
+          orElse: () => HxConflict.none,
+        ),
+      );
 }
 
 /// In-memory queue; the app persists `toJson()` into shared_preferences

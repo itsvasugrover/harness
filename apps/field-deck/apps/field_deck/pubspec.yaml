@@ -1,10 +1,11 @@
 name: field_deck
 description: Harness phone supervisor (board/worker/issues/audit/settings).
+publish_to: none
 version: 0.1.0
 environment: { sdk: ">=3.4.0 <4.0.0" }
 dependencies:
   flutter: { sdk: flutter }
-  harness_ui: { path: ../../../packages/harness_ui }
+  harness_ui: { path: ../../packages/harness_ui }
   # Verified latest on 2026-09-23. Policy: `flutter pub upgrade` per phase.
   http: ^1.6.0
   web_socket: ^1.0.1
